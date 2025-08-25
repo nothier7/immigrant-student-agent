@@ -57,11 +57,23 @@ function Markdown({ content }: { content: string }) {
         h1: ({ children }) => <h2 className="text-base font-bold mt-1">{children}</h2>,
         h2: ({ children }) => <h3 className="text-sm font-semibold mt-5 mb-2">{children}</h3>,
         h3: ({ children }) => <h4 className="text-sm font-semibold mt-4 mb-2">{children}</h4>,
-        p: ({ children }) => <p className="text-sm leading-relaxed mb-3">{children}</p>,
-        ul: ({ children }) => <ul className="list-disc pl-5 space-y-1 mt-2 mb-3">{children}</ul>,
-        ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1 mt-2 mb-3">{children}</ol>,
-        li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
-        // Links
+        p: ({ children }) => <p className="text-sm leading-relaxed mb-3 mt-1">{children}</p>,
+        ul: ({ children }) => (
+        <ul className="list-disc list-outside ml-5 mt-2 mb-3 space-y-1">
+            {children}
+        </ul>
+        ),
+        ol: ({ children }) => (
+        <ol className="list-decimal list-outside ml-5 mt-2 mb-3 space-y-1">
+            {children}
+        </ol>
+        ),
+        li: ({ children }) => (
+        <li className="text-sm leading-relaxed [&>p]:mt-2">
+            {children}
+        </li>
+        ),
+
         a: ({ href, children }) => (
           <a
             href={href || "#"}
@@ -216,21 +228,21 @@ export default function AgentChat() {
       {/* Transcript */}
       <div ref={scrollerRef} className="max-h-[52vh] overflow-y-auto space-y-3 pr-1">
         {messages.map((m, idx) => (
-          <div
+        <div
             key={idx}
             className={
-                m.role === "user"
-                    ? "whitespace-pre-wrap overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800 p-3"
-                    : "whitespace-pre-wrap overflow-hidden rounded-xl bg-indigo-50 dark:bg-indigo-950/40 p-3"
-                }
-          >
+            m.role === "user"
+                ? "whitespace-pre-wrap overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800 p-3"
+                : "overflow-hidden rounded-xl bg-indigo-50 dark:bg-indigo-950/40 p-3"
+            }
+        >
             <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 mb-1 flex items-center gap-2">
               <span className="opacity-80">{m.role === "user" ? "You" : "Agent"}</span>
               <span>·</span>
               <span>{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
 
-            <div className="text-sm leading-relaxed break-words">
+            <div className="text-sm leading-relaxed whitespace-normal break-words">
               {m.role === "agent" ? <Markdown content={m.text} /> : autoLink(m.text)}
             </div>
           </div>
