@@ -39,27 +39,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# --- Python backend (FastAPI) ---
-.venv/
-src/app/backend/.venv/
-__pycache__/
-*.py[cod]
-*.pyd
-*.so
-*.egg-info/
-dist/
-build/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# --- Firecrawl disk cache (if enabled) ---
-.firecrawl_cache/
-src/app/backend/.firecrawl_cache/
-
-# --- IDE (optional) ---
-.idea/
-.vscode/
