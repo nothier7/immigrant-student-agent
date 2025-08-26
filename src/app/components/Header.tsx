@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
+import Link from "next/link";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -9,26 +10,26 @@ export default function Header() {
     <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-neutral-950/50 border-b border-black/5 dark:border-white/10">
       <div className="mx-auto max-w-7xl px-4">
         <div className="flex h-16 items-center justify-between">
-          <a href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+          <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900">
               <Sparkles className="h-4 w-4" />
             </span>
             Dreamers Agent
-          </a>
+          </Link>
 
           <nav className="hidden md:flex items-center gap-6 text-sm text-neutral-600 dark:text-neutral-300">
-            <a className="hover:text-neutral-900 dark:hover:text-white transition" href="/#features">Features</a>
-            <a className="hover:text-neutral-900 dark:hover:text-white transition" href="/#how">How it works</a>
-            <a className="hover:text-neutral-900 dark:hover:text-white transition" href="/ccny">Try it now</a>
+            <Link className="hover:text-neutral-900 dark:hover:text-white transition" href="/#features">Features</Link>
+            <Link className="hover:text-neutral-900 dark:hover:text-white transition" href="/#how">How it works</Link>
+            <Link className="hover:text-neutral-900 dark:hover:text-white transition" href="/ccny">Try it now</Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-2">
-            <a href="#cta" className="inline-flex items-center rounded-xl border border-black/10 dark:border-white/10 px-4 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">
+            <Link href="#cta" className="inline-flex items-center rounded-xl border border-black/10 dark:border-white/10 px-4 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">
               Log in
-            </a>
-            <a href="#cta" className="inline-flex items-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold">
+            </Link>
+            <Link href="#cta" className="inline-flex items-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold">
               Get started
-            </a>
+            </Link>
           </div>
 
           <button
@@ -45,12 +46,12 @@ export default function Header() {
         {open && (
           <div className="md:hidden pb-4">
             <div className="grid gap-2 text-sm text-neutral-700 dark:text-neutral-300">
-              <a className="rounded-xl px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5" href="#features">Features</a>
-              <a className="rounded-xl px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5" href="#how">How it works</a>
-              <a className="rounded-xl px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5" href="#cta">Pricing</a>
+              <Link className="rounded-xl px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5" href="#features">Features</Link>
+              <Link className="rounded-xl px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5" href="#how">How it works</Link>
+              <Link className="rounded-xl px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5" href="#cta">Pricing</Link>
               <div className="mt-2 flex gap-2">
-                <a href="#cta" className="flex-1 inline-flex items-center justify-center rounded-xl border border-black/10 dark:border-white/10 px-4 py-2 text-sm font-medium">Log in</a>
-                <a href="#cta" className="flex-1 inline-flex items-center justify-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold">Get started</a>
+                <Link href="#cta" className="flex-1 inline-flex items-center justify-center rounded-xl border border-black/10 dark:border-white/10 px-4 py-2 text-sm font-medium">Log in</Link>
+                <Link href="#cta" className="flex-1 inline-flex items-center justify-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold">Get started</Link>
               </div>
             </div>
           </div>

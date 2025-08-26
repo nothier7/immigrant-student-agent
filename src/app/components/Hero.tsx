@@ -1,6 +1,7 @@
 "use client";
 import { motion } from "framer-motion";
 import { ArrowRight, GraduationCap, Handshake, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 export default function Hero() {
   return (
@@ -22,13 +23,13 @@ export default function Hero() {
 
         {/* Centered CTA */}
         <div className="mx-auto flex w-full max-w-xl items-center justify-center">
-          <a
+          <Link
             href="/ccny"
             className="inline-flex items-center rounded-2xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold"
           >
             Try it Now
             <ArrowRight className="ml-2 h-4 w-4" />
-          </a>
+          </Link>
         </div>
 
         {/* Three quick highlights */}
