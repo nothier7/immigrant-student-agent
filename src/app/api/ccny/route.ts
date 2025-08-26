@@ -1,6 +1,7 @@
-export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
 
+export const runtime = "nodejs"; // ensure Node runtime on Vercel
 import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = process.env.PY_BACKEND_URL ?? "http://127.0.0.1:8001/chat";
