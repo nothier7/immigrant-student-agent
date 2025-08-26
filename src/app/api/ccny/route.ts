@@ -1,3 +1,4 @@
+export const runtime = "nodejs"; // ensure Node runtime on Vercel
 import { NextRequest, NextResponse } from "next/server";
 
 const PY_BACKEND_URL = process.env.PY_BACKEND_URL || "http://127.0.0.1:8001/chat";
