@@ -149,7 +149,8 @@ export default function AgentChat() {
       });
       const raw = await res.text();
       let data: ChatResp;
-      try { data = JSON.parse(raw); } catch { data = { session_id: sessionId || "", error: raw } as any; }
+      try { data = JSON.parse(raw); } 
+      catch { data = { session_id: sessionId || "", error: raw }; }
 
       if (data.error) {
         setErr(data.error);
@@ -175,9 +176,10 @@ export default function AgentChat() {
           setCards([]);
         }
       }
-    } catch (e: any) {
-      setErr(e?.message || "Network error");
-      setMessages(m => [...m, { role: "agent", text: "Network error — check the backend is running.", ts: Date.now() }]);
+    }  catch (e) {
+        const msg = e instanceof Error ? e.message : "Network error";
+        setErr(msg);
+        setMessages(m => [...m, { role: "agent", text: "Network error — check the backend is running.", ts: Date.now() }]);
     } finally {
       setLoading(false);
     }
@@ -196,10 +198,15 @@ export default function AgentChat() {
   }
 
   function exportCSV() {
-    const headers = ["name", "url", "category", "authority", "deadline", "why"];
-    const rows = cards.map(c =>
-      headers.map(h => `"${String((c as any)[h] ?? "").replace(/"/g, '""')}"`).join(",")
-    );
+    const headers = ["name", "url", "category", "authority", "deadline", "why"] as const;
+    const rows = cards.map((c) =>
+    headers
+     .map((h) => {
+       const v = c[h] ?? "";
+       return `"${String(v).replace(/"/g, '""')}"`;
+     })
+     .join(",")
+     );
     const csv = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

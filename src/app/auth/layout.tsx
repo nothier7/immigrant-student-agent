@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-svh bg-[rgb(249,250,251)] dark:bg-neutral-950">
@@ -5,7 +7,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <header className="sticky top-0 z-10 border-b border-neutral-200/60 dark:border-neutral-800/60 bg-white/70 dark:bg-neutral-950/70 backdrop-blur">
         <div className="mx-auto max-w-2xl px-4 h-14 flex items-center justify-between">
           <div className="font-semibold tracking-tight">Immigrant Student Agent</div>
-          <a href="/" className="text-sm opacity-80 hover:opacity-100">Home</a>
+          <Link href="/" className="text-sm opacity-80 hover:opacity-100">Home</Link>
         </div>
       </header>
 
