@@ -2,17 +2,24 @@ import Link from "next/link";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
-export default function LoginPage({ searchParams }: { searchParams: SearchParams }) {
-  // Narrow values safely (Next can pass string[] for repeated keys)
-  const error = typeof searchParams.error === "string" ? searchParams.error : undefined;
-  const email = typeof searchParams.email === "string" ? searchParams.email : undefined;
-  const redirect = typeof searchParams.redirect === "string" ? searchParams.redirect : "/ccny";
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
+
+  // Narrow values safely
+  const error = typeof sp.error === "string" ? sp.error : undefined;
+  const email = typeof sp.email === "string" ? sp.email : undefined;
+  const redirect = typeof sp.redirect === "string" ? sp.redirect : "/ccny";
 
   return (
     <main className="mx-auto max-w-md px-4 pt-12">
       <h1 className="text-2xl font-semibold">Sign in (coming soon)</h1>
       <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-        Auth isn’t enabled yet. You can continue to the CCNY Agent and try the beta.
+        Auth isn’t enabled yet. You can continue to the CCNY Agent and try the
+        beta.
       </p>
 
       {error && (
@@ -36,8 +43,8 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
       </div>
 
       <p className="mt-6 text-xs text-neutral-500">
-        Note: Once auth is enabled, you’ll be able to sign in and save your profile. For now, everything runs without an
-        account.
+        Note: Once auth is enabled, you’ll be able to sign in and save your
+        profile. For now, everything runs without an account.
       </p>
     </main>
   );
