@@ -1,3 +1,6 @@
+# workflow.py
+import os
+import time
 import json
 import re
 from typing import Dict, Any, List, Optional
@@ -20,6 +23,7 @@ CURATED_CCNY_URLS = [
     "https://www.ccny.cuny.edu/immigrantstudentcenter/financial-aid",
 ]
 
+# System-wide (non-campus) sources we allow & often include for aid/residency
 EXTERNAL_SEEDS = [
     "https://www.hesc.ny.gov/applying-aid/nys-dream-act/",
     "https://www.thedream.us/",
@@ -40,11 +44,15 @@ CAMPUS_SUBDOMAIN_RE = re.compile(r"\b([a-z0-9-]+)\.cuny\.edu\b", re.I)
 UNDOC_RE = re.compile(r"\b(undocumented|non[-\s]?citizen|no (?:ssn|green\s*card)|daca|tps|asylee|asylum|sijs)\b", re.I)
 INSTATE_RE = re.compile(r"\b(in[-\s]?state|resident tuition|in state tuition|nysda|nys dream act|tap)\b", re.I)
 
-# ---------- Settings ----------
-MAX_SCRAPES_PER_TURN = 5
+# ---------- Settings / Tunables ----------
+MAX_SCRAPES_PER_TURN = int(os.getenv("MAX_SCRAPES_PER_TURN", "5"))
 ALLOWED_CATEGORIES = {
     "scholarship", "grant", "benefit", "legal", "advising", "tuition", "fellowship"
 }
+# Soft external search budget (keeps first turn fast, helps with Render cold starts)
+SOFT_SEARCH_TIMEOUT_S = int(os.getenv("SOFT_SEARCH_TIMEOUT_S", "8"))
+MAX_EXTERNAL_RESULTS = int(os.getenv("MAX_EXTERNAL_RESULTS", "6"))
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "6000"))
 
 
 # =========================
@@ -58,6 +66,7 @@ def _pick_url(item: Dict[str, Optional[str]]) -> Optional[str]:
 
 
 def _domain_ok(u: str) -> bool:
+    """Allow only CCNY and approved system-wide sites; block other CUNY campuses."""
     try:
         host = urlparse(u).netloc.lower().split(":")[0]
         if host in ALLOWED_HOSTS:
@@ -98,9 +107,7 @@ def _first_json_array(text: str) -> Optional[list]:
     s = (text or "").strip()
     # handle ```json ... ```
     if s.startswith("```"):
-        # remove surrounding backticks
         s = s.strip("`").strip()
-        # possible 'json' language tag
         if s.lower().startswith("json"):
             s = s[4:].strip()
     # fast path
@@ -116,6 +123,16 @@ def _first_json_array(text: str) -> Optional[list]:
         return json.loads(s[i:j])
     except Exception:
         return None
+
+
+def _dedup(seq: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for x in seq:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
 
 
 # =========================
@@ -183,24 +200,19 @@ class Workflow:
         for url in CURATED_CCNY_URLS:
             md = self.firecrawl.scrape(url)
             if md:
-                contexts.append({"url": url, "content": md[:6000]})
+                contexts.append({"url": url, "content": md[:MAX_CONTEXT_CHARS]})
 
         # For scholarships/financial aid/residency, also bring in system-level seeds
         if state.intent in {"scholarships", "financial_aid", "residency"}:
             for url in EXTERNAL_SEEDS:
                 md = self.firecrawl.scrape(url)
                 if md:
-                    contexts.append({"url": url, "content": md[:6000]})
+                    contexts.append({"url": url, "content": md[:MAX_CONTEXT_CHARS]})
 
         return {"contexts": contexts}
 
-
-    def _search_allowed(self, state: AgentState) -> Dict[str, Any]:
-        q = state.query
-        if hasattr(self.firecrawl, "is_rate_limited") and self.firecrawl.is_rate_limited():
-            # still return externals so we don't show only CCNY
-            return {"search_results": [{"url": u, "title": None} for u in EXTERNAL_SEEDS]}
-
+    # --- soft external search to avoid long cold-start stalls ---
+    def _search_external_soft(self, query: str, intent: str) -> List[Dict[str, Optional[str]]]:
         intent_hint = {
             "residency": "residency in-state resident tuition undocumented dream act tap ccny",
             "financial_aid": "financial aid FAFSA TAP scholarships ccny",
@@ -213,27 +225,50 @@ class Workflow:
             "tuition_billing": "bursar tuition payment plan ccny",
             "student_life": "clubs organizations student life ccny",
             "general": "ccny immigrant student center scholarships financial aid",
-        }.get(state.intent, "ccny immigrant student center")
+        }.get(intent, "ccny immigrant student center")
 
         site_filter = (
             "site:ccny.cuny.edu OR site:cuny.edu OR site:hesc.ny.gov "
             "OR site:thedream.us OR site:immigrantsrising.org"
         )
-        query = f"{q} {intent_hint} {site_filter}"
 
-        results = self.firecrawl.search(query, limit=8) or []
-        filtered: List[Dict[str, str | None]] = []
-        for r in results:
-            u = _pick_url(r)
-            if u and _domain_ok(u):
-                filtered.append({"url": u, "title": r.get("title")})
+        # Try a tiny bundle of queries within a strict time budget
+        queries = [
+            f"{query} {intent_hint} {site_filter}",
+            f"{intent_hint} {site_filter}",
+            f"{query} ccny scholarships {site_filter}" if intent in {"scholarships", "financial_aid"} else None,
+        ]
+        queries = [q for q in queries if q]
 
-        # If nothing survived filtering, include external seeds explicitly
+        start = time.time()
+        out: List[Dict[str, Optional[str]]] = []
+        for q in queries:
+            if time.time() - start > SOFT_SEARCH_TIMEOUT_S:
+                break
+            if hasattr(self.firecrawl, "is_rate_limited") and self.firecrawl.is_rate_limited():
+                break
+            res = self.firecrawl.search(q, limit=6) or []
+            for r in res:
+                u = _pick_url(r)
+                if u and _domain_ok(u):
+                    out.append({"url": u, "title": r.get("title")})
+                if len(out) >= MAX_EXTERNAL_RESULTS:
+                    return out
+        return out
+
+    def _search_allowed(self, state: AgentState) -> Dict[str, Any]:
+        # Respect cooldown/rate-limit: fall back to externals only
+        if hasattr(self.firecrawl, "is_rate_limited") and self.firecrawl.is_rate_limited():
+            return {"search_results": [{"url": u, "title": None} for u in EXTERNAL_SEEDS]}
+
+        # Run the soft search (short timeout, capped results)
+        filtered = self._search_external_soft(state.query, state.intent)
+
+        # If nothing survived filtering, include external seeds explicitly for aid/residency
         if not filtered and state.intent in {"scholarships", "financial_aid", "residency"}:
             filtered = [{"url": u, "title": None} for u in EXTERNAL_SEEDS]
 
-        return {"search_results": filtered[:8]}
-
+        return {"search_results": filtered[:MAX_EXTERNAL_RESULTS]}
 
     def _scrape_all(self, state: AgentState) -> Dict[str, Any]:
         seen = {c["url"] for c in state.contexts}
@@ -250,7 +285,7 @@ class Workflow:
                     continue
                 md = self.firecrawl.scrape(u)
                 if md:
-                    contexts.append({"url": u, "content": md[:6000]})
+                    contexts.append({"url": u, "content": md[:MAX_CONTEXT_CHARS]})
                     seen.add(u)
                     count += 1
 
@@ -341,7 +376,7 @@ class Workflow:
         merged = "\n\n---\n\n".join(
             f"URL: {c['url']}\n\n{c['content']}" for c in state.contexts
         )
-        sources = [c["url"] for c in state.contexts]
+        sources = _dedup([c["url"] for c in state.contexts])
 
         # Natural-language answer
         try:
@@ -359,11 +394,11 @@ class Workflow:
         except Exception:
             text = (
                 "I hit a temporary limit fetching pages. Here are the key CCNY/CUNY links to use right now:\n"
-                "- CCNY Immigrant Student Center: /immigrantstudentcenter\n"
-                "- In-State Tuition: /immigrantstudentcenter/qualifying-state-tuition\n"
-                "- Scholarships: /immigrantstudentcenter/scholarships\n"
-                "- Financial Aid: /immigrantstudentcenter/financial-aid\n"
-                "- HESC NYS Dream Act/TAP: hesc.ny.gov/applying-aid/nys-dream-act/\n"
+                "- CCNY Immigrant Student Center: https://www.ccny.cuny.edu/immigrantstudentcenter\n"
+                "- In-State Tuition: https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-state-tuition\n"
+                "- Scholarships: https://www.ccny.cuny.edu/immigrantstudentcenter/scholarships\n"
+                "- Financial Aid: https://www.ccny.cuny.edu/immigrantstudentcenter/financial-aid\n"
+                "- HESC NYS Dream Act/TAP: https://www.hesc.ny.gov/applying-aid/nys-dream-act/\n"
             )
 
         # Try to build structured cards from the LLM
@@ -428,7 +463,6 @@ class Workflow:
                     "deadline": "varies",
                     "why": "Regularly updated list of scholarships that don't require U.S. citizenship.",
                 },
-
             ]
             # keep only allowed domains (defensive)
             cards = [c for c in fallback if _domain_ok(c["url"])]
@@ -439,7 +473,6 @@ class Workflow:
             "sources": [SourceLink(url=u) for u in sources],
         }
         try:
-            # pydantic v2: model_fields holds the defined fields
             if hasattr(StudentAnswer, "model_fields") and "cards" in StudentAnswer.model_fields:
                 kwargs["cards"] = cards
         except Exception:
