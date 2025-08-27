@@ -14,6 +14,9 @@ from models import AgentState, StudentAnswer, SourceLink, ALLOWED_INTENTS
 from firecrawl import FirecrawlService
 from prompts import CCNYPrompts
 
+# at top (with the other imports and settings)
+FAST_MODE = os.getenv("FAST_MODE", "0") == "1"
+
 # ---------- Curated CCNY pages (always included) ----------
 CURATED_CCNY_URLS = [
     "https://www.ccny.cuny.edu/immigrantstudentcenter",
@@ -214,15 +217,14 @@ class Workflow:
     def _curate_ccny_pages(self, state: AgentState) -> Dict[str, Any]:
         contexts: List[Dict[str, str]] = []
 
-        # Cold boot: skip scraping; provide static snippets so we can reply instantly
-        if self._is_cold_boot():
+        if FAST_MODE or self._is_cold_boot():  # <<— changed
             for url in CURATED_CCNY_URLS:
                 contexts.append({"url": url, "content": STATIC_SNIPPETS.get(url, "")[:MAX_CONTEXT_CHARS]})
-            # For scholarship/aid/residency intents, include system seeds as static too
             if state.intent in {"scholarships", "financial_aid", "residency"}:
                 for url in EXTERNAL_SEEDS:
                     contexts.append({"url": url, "content": STATIC_SNIPPETS.get(url, "")[:MAX_CONTEXT_CHARS]})
             return {"contexts": contexts}
+
 
         # Normal: scrape curated CCNY pages
         for url in CURATED_CCNY_URLS:
@@ -283,11 +285,11 @@ class Workflow:
         return out
 
     def _search_allowed(self, state: AgentState) -> Dict[str, Any]:
-        # Cold boot: skip external search (avoid network) and just include seeds for aid intents
-        if self._is_cold_boot():
+        if FAST_MODE or self._is_cold_boot():  # <<— changed
             if state.intent in {"scholarships", "financial_aid", "residency"}:
                 return {"search_results": [{"url": u, "title": None} for u in EXTERNAL_SEEDS]}
             return {"search_results": []}
+
 
         if hasattr(self.firecrawl, "is_rate_limited") and self.firecrawl.is_rate_limited():
             return {"search_results": [{"url": u, "title": None} for u in EXTERNAL_SEEDS]}

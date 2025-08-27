@@ -1,11 +1,14 @@
-
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+// If your Render API is in Oregon (US West), prefer a West region on Vercel:
+export const preferredRegion = ["sfo1"]; // or remove if you don't want to pin
+export const maxDuration = 30; // seconds
 
-export const runtime = "nodejs"; // ensure Node runtime on Vercel
 import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = process.env.PY_BACKEND_URL ?? "http://127.0.0.1:8001/chat";
-const TIMEOUT_MS = Number(process.env.CCNY_API_TIMEOUT_MS ?? 55000);
+// Keep the client timeout < server deadline (server uses WORKFLOW_TIMEOUT_S=18 by default)
+const TIMEOUT_MS = Number(process.env.CCNY_API_TIMEOUT_MS ?? 30000);
 
 type Source = { url: string; title?: string | null };
 export type UICard = {
@@ -26,13 +29,37 @@ type ChatResp = {
   error?: string;
 };
 
+function fallback(sessionId?: string): ChatResp {
+  // Same links as server-side fallback so the UI stays consistent
+  const sources: Source[] = [
+    { url: "https://www.ccny.cuny.edu/immigrantstudentcenter" },
+    { url: "https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-state-tuition" },
+    { url: "https://www.ccny.cuny.edu/immigrantstudentcenter/scholarships" },
+    { url: "https://www.ccny.cuny.edu/immigrantstudentcenter/financial-aid" },
+    { url: "https://www.hesc.ny.gov/applying-aid/nys-dream-act/" },
+    { url: "https://www.thedream.us/" },
+    { url: "https://immigrantsrising.org/resource/scholarships/" },
+  ];
+
+  return {
+    session_id: sessionId,
+    answer_text:
+      "Our server is waking up and fetching sources. Here are key links to get you started right now.",
+    sources,
+    cards: [],
+  };
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({} as Record<string, unknown>));
-
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const sessionId =
+    (body?.["session_id"] as string | undefined) ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}`);
 
   try {
+    // Simpler timeout: AbortSignal.timeout is supported in Node 18+
     const r = await fetch(API_URL, {
       method: "POST",
       headers: {
@@ -42,27 +69,24 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify(body),
       cache: "no-store",
-      signal: controller.signal,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
     const text = await r.text();
-    const data: ChatResp = (() => {
-      try {
-        return JSON.parse(text) as ChatResp;
-      } catch {
-        return { error: text };
-      }
-    })();
-
+    let data: ChatResp;
+    try {
+      data = JSON.parse(text) as ChatResp;
+    } catch {
+      // Backend returned non-JSON (e.g., error page) — still give a graceful fallback
+      data = fallback(sessionId);
+    }
     return NextResponse.json(data, { status: r.status });
-  } catch (err) {
+  } catch (err: unknown) {
     const isAbort = (err as { name?: string } | undefined)?.name === "AbortError";
-    const status = isAbort ? 504 : 502;
-    const msg = isAbort ? "Upstream API timeout (Render cold start?)" : "Upstream API unavailable";
-    const data: ChatResp = { error: msg };
-    return NextResponse.json(data, { status });
-  } finally {
-    clearTimeout(t);
+    // On timeout or network failure, return a helpful, structured fallback (200 OK)
+    const data = fallback(sessionId);
+    // If you prefer to reflect a gateway status, switch to 504/502 — but 200 keeps your UI simpler.
+    return NextResponse.json(data, { status: isAbort ? 200 : 200 });
   }
 }
 
@@ -70,5 +94,6 @@ export async function GET() {
   return NextResponse.json({
     ok: Boolean(process.env.PY_BACKEND_URL),
     api: API_URL,
+    timeoutMs: TIMEOUT_MS,
   });
 }

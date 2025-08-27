@@ -1,37 +1,35 @@
-# server.py — FastAPI wrapper for your LangGraph agent
+# server.py — FastAPI wrapper for your LangGraph agent (deadline + fallback)
 
 from __future__ import annotations
+import os
 import uuid
-from pathlib import Path
 import sys
 import threading
+import concurrent.futures
+from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, HTTPException  # type: ignore
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# Load .env next to this file (OPENAI_API_KEY, FIRECRAWL_API_KEY)
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
-# Make local modules (workflow.py, prompts.py, models.py, firecrawl.py) importable
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# FastAPI app
 app = FastAPI(title="CCNY Student Agent API")
 
-# Try to import your agent workflow
 WORKFLOW_IMPORT_ERROR = None
 try:
-    from workflow import Workflow  # local import
+    from workflow import Workflow
     _workflow = Workflow()
 except Exception as e:
     WORKFLOW_IMPORT_ERROR = e
     _workflow = None
 
-# ----- Models -----
+# -------- models --------
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     message: str = Field(..., min_length=1)
@@ -56,10 +54,9 @@ class ChatResponse(BaseModel):
     sources: List[Source] = Field(default_factory=list)
     cards: List[ResourceCardOut] = Field(default_factory=list)
 
-# Simple in-memory session store
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
-# ----- Background warmup (non-blocking) -----
+# -------- background warm (non-blocking) --------
 def _warm_caches_bg():
     if _workflow is None:
         return
@@ -76,29 +73,32 @@ def _warm_caches_bg():
 
 @app.on_event("startup")
 def _on_startup():
-    # Kick off cache warmup in a background thread so cold starts return fast.
-    t = threading.Thread(target=_warm_caches_bg, daemon=True)
-    t.start()
+    threading.Thread(target=_warm_caches_bg, daemon=True).start()
 
-# ----- Routes -----
-@app.get("/health")
-def health():
-    if WORKFLOW_IMPORT_ERROR:
-        return {
-            "ok": False,
-            "error": f"workflow import failed: {repr(WORKFLOW_IMPORT_ERROR)}",
-            "cwd": str(BASE_DIR),
-        }
-    return {"ok": True}
+# -------- helpers --------
+WORKFLOW_TIMEOUT_S = int(os.getenv("WORKFLOW_TIMEOUT_S", "18"))
 
-@app.post("/warm")
-def warm():
-    # Optional endpoint to manually trigger a background warm (non-blocking)
+def _fallback_sources() -> List[Source]:
+    urls = [
+        "https://www.ccny.cuny.edu/immigrantstudentcenter",
+        "https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-state-tuition",
+        "https://www.ccny.cuny.edu/immigrantstudentcenter/scholarships",
+        "https://www.ccny.cuny.edu/immigrantstudentcenter/financial-aid",
+        "https://www.hesc.ny.gov/applying-aid/nys-dream-act/",
+        "https://www.thedream.us/",
+        "https://immigrantsrising.org/resource/scholarships/",
+    ]
+    return [Source(url=u) for u in urls]
+
+def _run_with_deadline(prompt: str):
     if _workflow is None:
-        raise HTTPException(status_code=500, detail=f"Agent workflow not available: {repr(WORKFLOW_IMPORT_ERROR)}")
-    t = threading.Thread(target=_warm_caches_bg, daemon=True)
-    t.start()
-    return {"ok": True, "message": "Warmup started in background."}
+        return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_workflow.run, prompt)
+        try:
+            return fut.result(timeout=WORKFLOW_TIMEOUT_S)
+        except concurrent.futures.TimeoutError:
+            return None
 
 def _is_yes(text: str) -> bool:
     t = text.strip().lower()
@@ -108,6 +108,24 @@ def _is_no(text: str) -> bool:
     t = text.strip().lower()
     return any(x in t for x in ["no", "nope", "not yet", "i don't", "i do not", "out-of-state", "oos"])
 
+# -------- routes --------
+@app.get("/")
+def root():
+    return {"ok": True, "service": "CCNY Student Agent"}
+
+@app.get("/health")
+def health():
+    if WORKFLOW_IMPORT_ERROR:
+        return {"ok": False, "error": f"workflow import failed: {repr(WORKFLOW_IMPORT_ERROR)}", "cwd": str(BASE_DIR)}
+    return {"ok": True}
+
+@app.post("/warm")
+def warm():
+    if _workflow is None:
+        raise HTTPException(status_code=500, detail=f"Agent workflow not available: {repr(WORKFLOW_IMPORT_ERROR)}")
+    threading.Thread(target=_warm_caches_bg, daemon=True).start()
+    return {"ok": True, "message": "Warmup started in background."}
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     if _workflow is None:
@@ -116,7 +134,7 @@ def chat(req: ChatRequest):
     sid = req.session_id or str(uuid.uuid4())
     sess = SESSIONS.setdefault(sid, {"pending_kind": None, "orig_query": None})
 
-    # Handle pending in-state question
+    # handle pending residency question
     if sess.get("pending_kind") == "residency":
         orig = sess.get("orig_query") or req.message
         if _is_yes(req.message):
@@ -125,10 +143,17 @@ def chat(req: ChatRequest):
             composed = f"I do NOT yet pay in-state (resident) tuition at CCNY. {orig}"
         else:
             return ChatResponse(session_id=sid, ask="Just to confirm: do you already pay **in-state (resident) tuition** at CCNY?")
+
         sess["pending_kind"] = None
         sess["orig_query"] = None
 
-        res = _workflow.run(composed)
+        res = _run_with_deadline(composed)
+        if res is None:
+            return ChatResponse(
+                session_id=sid,
+                answer_text="Our server is fetching sources. Here are the key links to get started right now.",
+                sources=_fallback_sources(),
+            )
         if res.ask:
             sess["pending_kind"] = "residency"
             sess["orig_query"] = orig
@@ -142,8 +167,14 @@ def chat(req: ChatRequest):
             cards=[ResourceCardOut(**c.model_dump()) for c in (res.answer.cards if res.answer else [])],
         )
 
-    # Normal flow
-    res = _workflow.run(req.message)
+    # normal flow
+    res = _run_with_deadline(req.message)
+    if res is None:
+        return ChatResponse(
+            session_id=sid,
+            answer_text="Our server is fetching sources. Here are the key links to get started right now.",
+            sources=_fallback_sources(),
+        )
     if res.ask:
         sess["pending_kind"] = "residency"
         sess["orig_query"] = req.message
