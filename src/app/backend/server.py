@@ -4,9 +4,10 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 import sys
+import threading
 from typing import Optional, Dict, Any, List
 
-from fastapi import FastAPI, HTTPException # type: ignore
+from fastapi import FastAPI, HTTPException  # type: ignore
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -18,27 +19,14 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# FastAPI app (defined at module import time)
+# FastAPI app
 app = FastAPI(title="CCNY Student Agent API")
 
 # Try to import your agent workflow
 WORKFLOW_IMPORT_ERROR = None
 try:
-    from workflow import Workflow          # <— IMPORTANT: local import
+    from workflow import Workflow  # local import
     _workflow = Workflow()
-
-    try:
-        from workflow import CURATED_CCNY_URLS  # always exists in our workflow.py
-        _workflow.firecrawl.warm_cache(CURATED_CCNY_URLS)
-    except Exception:
-        pass
-    try:
-        # Optional: only if you added EXTERNAL_SEEDS in workflow.py
-        from workflow import EXTERNAL_SEEDS
-        _workflow.firecrawl.warm_cache(EXTERNAL_SEEDS)
-    except Exception:
-        pass
-
 except Exception as e:
     WORKFLOW_IMPORT_ERROR = e
     _workflow = None
@@ -71,6 +59,27 @@ class ChatResponse(BaseModel):
 # Simple in-memory session store
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
+# ----- Background warmup (non-blocking) -----
+def _warm_caches_bg():
+    if _workflow is None:
+        return
+    try:
+        from workflow import CURATED_CCNY_URLS
+        _workflow.firecrawl.warm_cache(CURATED_CCNY_URLS)
+    except Exception:
+        pass
+    try:
+        from workflow import EXTERNAL_SEEDS
+        _workflow.firecrawl.warm_cache(EXTERNAL_SEEDS)
+    except Exception:
+        pass
+
+@app.on_event("startup")
+def _on_startup():
+    # Kick off cache warmup in a background thread so cold starts return fast.
+    t = threading.Thread(target=_warm_caches_bg, daemon=True)
+    t.start()
+
 # ----- Routes -----
 @app.get("/health")
 def health():
@@ -81,6 +90,15 @@ def health():
             "cwd": str(BASE_DIR),
         }
     return {"ok": True}
+
+@app.post("/warm")
+def warm():
+    # Optional endpoint to manually trigger a background warm (non-blocking)
+    if _workflow is None:
+        raise HTTPException(status_code=500, detail=f"Agent workflow not available: {repr(WORKFLOW_IMPORT_ERROR)}")
+    t = threading.Thread(target=_warm_caches_bg, daemon=True)
+    t.start()
+    return {"ok": True, "message": "Warmup started in background."}
 
 def _is_yes(text: str) -> bool:
     t = text.strip().lower()
@@ -137,5 +155,4 @@ def chat(req: ChatRequest):
         answer_text=(res.answer.text if res.answer else None),
         sources=[Source(url=s.url or "", title=s.title) for s in (res.answer.sources if res.answer else [])],
         cards=[ResourceCardOut(**c.model_dump()) for c in (res.answer.cards if res.answer else [])],
-
     )

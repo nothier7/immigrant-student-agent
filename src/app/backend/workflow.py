@@ -54,6 +54,29 @@ SOFT_SEARCH_TIMEOUT_S = int(os.getenv("SOFT_SEARCH_TIMEOUT_S", "8"))
 MAX_EXTERNAL_RESULTS = int(os.getenv("MAX_EXTERNAL_RESULTS", "6"))
 MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "6000"))
 
+# Cold-boot window (seconds) — during this we avoid scraping & searching
+FAST_BOOT_WINDOW = int(os.getenv("FAST_BOOT_WINDOW", "10"))
+
+# Static snippets used during cold-boot so we can respond without scraping
+STATIC_SNIPPETS: dict[str, str] = {
+    "https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-state-tuition":
+        "Explains residency pathways for in-state tuition (e.g., NYS high school attendance/graduation, or 12-month domicile with proof).",
+    "https://www.ccny.cuny.edu/immigrantstudentcenter/scholarships":
+        "Curated scholarships and tips for undocumented/DACA/immigrant students at CCNY.",
+    "https://www.ccny.cuny.edu/immigrantstudentcenter/financial-aid":
+        "How to access TAP/Dream Act and other financial aid; contact info for guidance at CCNY.",
+    "https://www.ccny.cuny.edu/immigrantstudentcenter":
+        "CCNY Immigrant Student Center hub: services, contacts, programs, and upcoming info.",
+    "https://www.ccny.cuny.edu/immigrantstudentcenter/ccny-dream-team":
+        "Peer support organization for immigrant/undocumented students; events and resources.",
+    "https://www.hesc.ny.gov/applying-aid/nys-dream-act/":
+        "NYS Dream Act: eligibility and application for state aid (including TAP) for eligible students.",
+    "https://www.thedream.us/":
+        "TheDream.US: national scholarships for undocumented/DACA students; deadlines are seasonal.",
+    "https://immigrantsrising.org/resource/scholarships/":
+        "Immigrants Rising: frequently updated list of scholarships that don’t require U.S. citizenship.",
+}
+
 
 # =========================
 # helpers
@@ -71,7 +94,7 @@ def _domain_ok(u: str) -> bool:
         host = urlparse(u).netloc.lower().split(":")[0]
         if host in ALLOWED_HOSTS:
             return True
-        # Block other CUNY campuses (only CCNY allowed)
+        # Block other campuses (only CCNY allowed)
         m = CAMPUS_SUBDOMAIN_RE.search(host)
         if m and host not in {"ccny.cuny.edu", "www.ccny.cuny.edu"}:
             return False
@@ -81,7 +104,6 @@ def _domain_ok(u: str) -> bool:
 
 
 def _authority_for(url: str) -> str:
-    """Map host → human label for the card 'authority'."""
     try:
         host = urlparse(url).netloc.lower().replace("www.", "")
     except Exception:
@@ -100,23 +122,16 @@ def _authority_for(url: str) -> str:
 
 
 def _first_json_array(text: str) -> Optional[list]:
-    """
-    Best-effort extractor: returns a JSON array even if the model
-    wrapped it in prose or a code block.
-    """
     s = (text or "").strip()
-    # handle ```json ... ```
     if s.startswith("```"):
         s = s.strip("`").strip()
         if s.lower().startswith("json"):
             s = s[4:].strip()
-    # fast path
     if s.startswith("["):
         try:
             return json.loads(s)
         except Exception:
             pass
-    # defensive slice between first '[' and last ']'
     try:
         i = s.index("[")
         j = s.rindex("]") + 1
@@ -144,6 +159,10 @@ class Workflow:
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
         self.prompts = CCNYPrompts()
         self.workflow = self._build()
+        self.boot_ts = time.time()
+
+    def _is_cold_boot(self) -> bool:
+        return (time.time() - self.boot_ts) < FAST_BOOT_WINDOW
 
     def _build(self):
         g = StateGraph(AgentState)
@@ -189,20 +208,28 @@ class Workflow:
         looks_undoc = bool(UNDOC_RE.search(q))
         mentions_instate = bool(INSTATE_RE.search(q))
         if looks_undoc and not mentions_instate:
-            return {
-                "ask": "Do you already pay **in-state (resident) tuition** at CCNY?"
-            }
+            return {"ask": "Do you already pay **in-state (resident) tuition** at CCNY?"}
         return {}
 
     def _curate_ccny_pages(self, state: AgentState) -> Dict[str, Any]:
         contexts: List[Dict[str, str]] = []
-        # Always include CCNY pages
+
+        # Cold boot: skip scraping; provide static snippets so we can reply instantly
+        if self._is_cold_boot():
+            for url in CURATED_CCNY_URLS:
+                contexts.append({"url": url, "content": STATIC_SNIPPETS.get(url, "")[:MAX_CONTEXT_CHARS]})
+            # For scholarship/aid/residency intents, include system seeds as static too
+            if state.intent in {"scholarships", "financial_aid", "residency"}:
+                for url in EXTERNAL_SEEDS:
+                    contexts.append({"url": url, "content": STATIC_SNIPPETS.get(url, "")[:MAX_CONTEXT_CHARS]})
+            return {"contexts": contexts}
+
+        # Normal: scrape curated CCNY pages
         for url in CURATED_CCNY_URLS:
             md = self.firecrawl.scrape(url)
             if md:
                 contexts.append({"url": url, "content": md[:MAX_CONTEXT_CHARS]})
 
-        # For scholarships/financial aid/residency, also bring in system-level seeds
         if state.intent in {"scholarships", "financial_aid", "residency"}:
             for url in EXTERNAL_SEEDS:
                 md = self.firecrawl.scrape(url)
@@ -215,7 +242,7 @@ class Workflow:
     def _search_external_soft(self, query: str, intent: str) -> List[Dict[str, Optional[str]]]:
         intent_hint = {
             "residency": "residency in-state resident tuition undocumented dream act tap ccny",
-            "financial_aid": "financial aid FAFSA TAP scholarships ccny",
+            "financial_aid": "financial aid TAP scholarships ccny",
             "scholarships": "scholarship deadlines eligibility ccny engineering",
             "registration": "registrar registration deadlines ccny",
             "calendar": "academic calendar ccny deadlines",
@@ -232,7 +259,6 @@ class Workflow:
             "OR site:thedream.us OR site:immigrantsrising.org"
         )
 
-        # Try a tiny bundle of queries within a strict time budget
         queries = [
             f"{query} {intent_hint} {site_filter}",
             f"{intent_hint} {site_filter}",
@@ -257,14 +283,17 @@ class Workflow:
         return out
 
     def _search_allowed(self, state: AgentState) -> Dict[str, Any]:
-        # Respect cooldown/rate-limit: fall back to externals only
+        # Cold boot: skip external search (avoid network) and just include seeds for aid intents
+        if self._is_cold_boot():
+            if state.intent in {"scholarships", "financial_aid", "residency"}:
+                return {"search_results": [{"url": u, "title": None} for u in EXTERNAL_SEEDS]}
+            return {"search_results": []}
+
         if hasattr(self.firecrawl, "is_rate_limited") and self.firecrawl.is_rate_limited():
             return {"search_results": [{"url": u, "title": None} for u in EXTERNAL_SEEDS]}
 
-        # Run the soft search (short timeout, capped results)
         filtered = self._search_external_soft(state.query, state.intent)
 
-        # If nothing survived filtering, include external seeds explicitly for aid/residency
         if not filtered and state.intent in {"scholarships", "financial_aid", "residency"}:
             filtered = [{"url": u, "title": None} for u in EXTERNAL_SEEDS]
 
@@ -273,6 +302,13 @@ class Workflow:
     def _scrape_all(self, state: AgentState) -> Dict[str, Any]:
         seen = {c["url"] for c in state.contexts}
         contexts: List[Dict[str, str]] = list(state.contexts)
+
+        # Cold boot: do not scrape anything else
+        if self._is_cold_boot():
+            if not contexts:
+                for url in CURATED_CCNY_URLS:
+                    contexts.append({"url": url, "content": STATIC_SNIPPETS.get(url, "")})
+            return {"contexts": contexts}
 
         limited = hasattr(self.firecrawl, "is_rate_limited") and self.firecrawl.is_rate_limited()
         if not limited:
@@ -289,7 +325,6 @@ class Workflow:
                     seen.add(u)
                     count += 1
 
-        # If we ended up with nothing (rare), at least return curated URLs as sources.
         if not contexts:
             for url in CURATED_CCNY_URLS:
                 contexts.append({"url": url, "content": ""})
@@ -298,10 +333,6 @@ class Workflow:
 
     # ---------- cards ----------
     def _make_cards(self, query: str, merged_context: str, intent: str) -> List[Dict[str, Any]]:
-        """
-        Ask the LLM for 1–6 resource cards (JSON array). Robust to messy outputs.
-        Filters to allowed domains and normalizes categories.
-        """
         try:
             schema_prompt = (
                 "From the provided CCNY/CUNY/HESC/TheDream.US/Immigrants Rising context only, "
@@ -378,7 +409,27 @@ class Workflow:
         )
         sources = _dedup([c["url"] for c in state.contexts])
 
-        # Natural-language answer
+        # If cold-boot or context is tiny, return a fast static synthesis
+        if self._is_cold_boot() or len(merged) < 200:
+            text = (
+                "To qualify for **in-state tuition** at CCNY, review the residency pathways (e.g., NYS high school attendance/graduation, "
+                "or 12-month domicile with proof). After that, explore scholarships and state aid:\n\n"
+                "• **In-State Tuition (CCNY):** steps & documentation.\n"
+                "• **NYS Dream Act (HESC):** possible access to state aid/TAP.\n"
+                "• **CCNY Scholarships:** curated list for undocumented/immigrant students.\n"
+                "• **TheDream.US:** national scholarships (seasonal deadlines).\n"
+                "• **Immigrants Rising:** updated list of scholarships without citizenship requirements.\n\n"
+                "If you don't already pay in-state tuition, start there—it reduces tuition substantially. "
+                "I can tailor scholarships after a bit more info (major, class year, status like DACA/SIJS, GPA)."
+            )
+            kwargs: Dict[str, Any] = {
+                "text": text,
+                "sources": [SourceLink(url=u) for u in sources],
+            }
+            # No cards in the cold path—UI still shows sources; next turn will be enriched
+            return {"answer": StudentAnswer(**kwargs)}
+
+        # Normal LLM path
         try:
             resp = self.llm.invoke(
                 [
@@ -401,10 +452,8 @@ class Workflow:
                 "- HESC NYS Dream Act/TAP: https://www.hesc.ny.gov/applying-aid/nys-dream-act/\n"
             )
 
-        # Try to build structured cards from the LLM
         cards: List[Dict[str, Any]] = self._make_cards(state.query, merged, state.intent)
 
-        # Deterministic fallback: if no cards, build a minimal set from curated CCNY pages
         if not cards:
             fallback = [
                 {
@@ -464,10 +513,8 @@ class Workflow:
                     "why": "Regularly updated list of scholarships that don't require U.S. citizenship.",
                 },
             ]
-            # keep only allowed domains (defensive)
             cards = [c for c in fallback if _domain_ok(c["url"])]
 
-        # Build StudentAnswer (compatible if your StudentAnswer lacks 'cards')
         kwargs: Dict[str, Any] = {
             "text": text,
             "sources": [SourceLink(url=u) for u in sources],
