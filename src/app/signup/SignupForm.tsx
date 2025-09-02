@@ -64,13 +64,19 @@ export default function SignupForm({
           <div className="space-y-2">
             <label className="text-sm font-medium">Password</label>
             <input
-              name="password"
-              type="password"
-              required
-              minLength={8}
-              className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-              placeholder="At least 8 characters"
+                name="password"
+                type="password"
+                required
+                minLength={8}
+                // Avoid fragile lookaheads; split checks into simpler groups if possible.
+                // Still using a consolidated pattern? Keep it conservative:
+                pattern="(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}"
+                title="Must be 8+ characters and include an uppercase letter, a number, and a special character."
+                autoComplete="new-password"
+                className="w-full rounded-lg border ..."
             />
+
+            <p className="text-xs text-neutral-500">Must be 8+ characters and include at least 1 uppercase letter, 1 number, and 1 special character.</p>
           </div>
 
           <button

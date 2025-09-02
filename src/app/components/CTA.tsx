@@ -12,11 +12,11 @@ export default function CTA() {
               Instant access to the scholarship finder. Pro adds mentor intros and deadline reminders.
             </p>
             <div className="mt-6 flex items-center gap-2">
-              <a className="inline-flex items-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold" href="#">
+              <a className="inline-flex items-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-4 py-2 text-sm font-semibold" href="/signup">
                 Create account
                 <ArrowRight className="ml-2 h-4 w-4" />
               </a>
-              <a className="inline-flex items-center rounded-xl border border-black/10 dark:border-white/10 px-4 py-2 text-sm" href="#">
+              <a className="inline-flex items-center rounded-xl border border-black/10 dark:border-white/10 px-4 py-2 text-sm" href="/try">
                 View demo
               </a>
             </div>
