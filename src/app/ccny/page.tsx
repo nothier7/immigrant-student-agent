@@ -7,7 +7,7 @@ export default function CCNYDemoPage() {
     <div className="min-h-dvh bg-[rgb(249,250,251)] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100 antialiased">
       <Header />
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">CCNY Student Support (Beta)</h1>
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">CCNY Student Support</h1>
         <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
           Ask about in-state tuition, NYS Dream Act/TAP, scholarships, grants, or CCNY immigrant resources.
         </p>
