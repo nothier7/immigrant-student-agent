@@ -1,6 +1,7 @@
 // app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next"
 
 export const metadata: Metadata = {
   title: "CCNY Resource Agent (Beta)",
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white">
         {children}
+        <Analytics />
       </body>
     </html>
   );
