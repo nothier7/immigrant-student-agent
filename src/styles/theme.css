@@ -1,0 +1,49 @@
+/* Light (hope-forward) */
+:root{
+    /* brand */
+    --primary: 42 105 172;     /* #2A69AC hopeBlue */
+    --primary-600: 34 88 145;
+    --primary-700: 27 70 116;
+    --accent: 45 190 133;      /* #2DBE85 renewalGreen */
+    --highlight: 255 179 155;  /* #FFB39B dawnPeach */
+    --gold: 245 196 83;        /* #F5C453 sunriseGold */
+    --info: 166 161 255;       /* #A6A1FF calmLavender */
+  
+    /* neutrals */
+    --text: 51 65 85;          /* slate */
+    --heading: 18 32 46;       /* ink */
+    --bg: 250 252 254;         /* paper */
+    --card: 246 248 250;       /* cloud */
+    --ring: 42 105 172;        /* focus ring (brand) */
+  
+  /* glassy surfaces / outlines (light) */
+  --glass-bg: 255 255 255;
+  --glass-alpha: .60;
+  --glass-border: 185 190 200; /* subtle cool gray for visible light-mode borders */
+  --glass-border-alpha: .28;
+  }
+  
+  /* Soft dark (evening sky — gentle, not pure black) */
+  :root[data-theme="dark"], .dark{
+    --text: 230 237 245;
+    --heading: 255 255 255;
+    --bg: 15 23 42;            /* night */
+    --card: 17 24 39;          /* midnight */
+    --ring: 166 161 255;       /* lavender ring */
+  
+    --glass-bg: 17 24 39;
+    --glass-alpha: .40;
+    --glass-border: 120 130 145; /* frosted bluish-gray for dark */
+    --glass-border-alpha: .18;
+  }
+  
+  /* utilities */
+  .glass-surface{
+    background-color: rgb(var(--glass-bg) / var(--glass-alpha));
+    backdrop-filter: saturate(150%) blur(10px);
+    -webkit-backdrop-filter: saturate(150%) blur(10px);
+    border-bottom: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
+  }
+  
+  .ring-brand { box-shadow: 0 0 0 3px rgb(var(--ring) / .35); }
+  

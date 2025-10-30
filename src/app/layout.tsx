@@ -1,19 +1,20 @@
-// app/layout.tsx
-import "./globals.css";
 import type { Metadata } from "next";
-import { Analytics } from "@vercel/analytics/next"
+import "./globals.css";
+import "@/styles/theme.css";
+import { ThemeProvider } from "@/theme/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: "CCNY Resource Agent (Beta)",
-  description: "Helps immigrant students at CCNY find in-state tuition paths, NYS Dream Act/TAP, and scholarships.",
+  title: "Dreamers Agent",
+  description: "Hope-forward resources for immigrant & first-gen students",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white">
-        {children}
-        <Analytics />
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen bg-bg text-text antialiased transition-colors duration-200">
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
