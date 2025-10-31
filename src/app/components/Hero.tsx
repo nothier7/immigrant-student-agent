@@ -14,19 +14,25 @@ export default function Hero() {
           transition={{ duration: 0.5 }}
           className="text-3xl font-semibold leading-tight tracking-tight md:text-5xl text-heading"
         >
-          Scholarships, mentors, and resources —
-          <span className="block">tailored for immigrant students.</span>
+          Find help fast at CUNY
+          <span className="block">Scholarships, mentors, and campus resources</span>
         </motion.h1>
 
         <p className="text-base md:text-lg text-text/85">
-          Answer a few questions about your background (e.g., DACA, state, school), and our agent curates verified
-          opportunities you can actually use.
+          Browse the resource directory, visit your school hub, or try the CCNY agent demo. All undocu‑friendly, with
+          verified links and clear deadlines.
         </p>
 
         {/* Centered CTA */}
-        <div className="mx-auto flex w-full max-w-xl items-center justify-center">
-          <Link href="/try" className={buttonCn({ variant: "outline", size: "md" })}>
-            Try it Now
+        <div className="mx-auto flex w-full max-w-xl items-center justify-center gap-2">
+          <Link href="/resources" className={buttonCn({ variant: "outline", size: "md" })}>
+            Browse Directory
+          </Link>
+          <Link href="/schools" className={buttonCn({ variant: "outline", size: "md" })}>
+            Find Your School
+          </Link>
+          <Link href="/ccny" className={buttonCn({ variant: "ghost", size: "md" })}>
+            CCNY Agent Demo
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </div>
@@ -34,9 +40,9 @@ export default function Hero() {
         {/* Three quick highlights */}
         <div className="mx-auto grid max-w-5xl grid-cols-1 gap-3 pt-8 md:grid-cols-3">
           {[
-            { icon: GraduationCap, title: "Scholarship Finder", desc: "Filter by status, state, and deadlines." },
-            { icon: Handshake, title: "Community", desc: "Connect with immigrant students like you" },
-            { icon: ShieldCheck, title: "Undocu-friendly", desc: "Opportunities that don’t require a green card or citizenship." },
+            { icon: GraduationCap, title: "Resource Directory", desc: "Filter scholarships, mentorships, and benefits by school & deadline." },
+            { icon: Handshake, title: "School Hubs", desc: "Curated links and deadlines for each CUNY campus." },
+            { icon: ShieldCheck, title: "CCNY Agent Demo", desc: "Ask questions and get verified links in a chat UI." },
           ].map((f, i) => (
             <motion.div
               key={f.title}

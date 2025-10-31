@@ -16,16 +16,16 @@ export default function Header() {
           <Link href="/resources" className="text-text hover:underline underline-offset-4">
             Resources
           </Link>
-          <Link href="/about" className="text-text hover:underline underline-offset-4">
-            About
+          <Link href="/schools" className="text-text hover:underline underline-offset-4">
+            Schools
           </Link>
 
           {/* subtle dark-mode toggle (sun/moon only) */}
           <ThemeToggle subtle />
 
           {/* primary action */}
-          <Link href="/app" className={buttonCn({ variant: "outline", size: "md" })}>
-            Launch App
+          <Link href="/ccny" className={buttonCn({ variant: "outline", size: "md" })}>
+            Chat with Agent
           </Link>
         </nav>
       </div>

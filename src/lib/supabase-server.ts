@@ -14,14 +14,16 @@ export async function createSupabaseServer() {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+        // In Server Components (not a Server Action/Route), Next.js disallows
+        // mutating cookies. For data fetching pages like /resources we only
+        // need read access, so provide no-op setters to avoid runtime errors.
+        set(_name: string, _value: string, _options: CookieOptions) {
+          /* no-op in RSC */
         },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: "", ...options });
+        remove(_name: string, _options: CookieOptions) {
+          /* no-op in RSC */
         },
       },
     }
   );
 }
-

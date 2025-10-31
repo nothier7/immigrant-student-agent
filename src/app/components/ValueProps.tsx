@@ -3,9 +3,9 @@ export default function ValueProps() {
     <section id="how" className="mx-auto max-w-7xl px-4 py-16 md:py-24">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {[
-          { step: "01", title: "Tell us about you", desc: "Status, state, school level, GPA. No SSN needed." },
-          { step: "02", title: "Review curated list", desc: "We filter scholarships, grants, and fellowships you're eligible for." },
-          { step: "03", title: "Track & apply", desc: "Download your curated list with the links to apply." },
+          { step: "01", title: "Pick your campus", desc: "Start at your CUNY hub or choose All CUNY in the directory." },
+          { step: "02", title: "Browse verified resources", desc: "Scholarships, advising, benefits — with authority links and deadlines." },
+          { step: "03", title: "Contribute a resource", desc: "See something missing? Submit it to help classmates." },
         ].map((item) => (
           <div
             key={item.step}
