@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import ResourceReport from "@/app/components/ResourceReport";
 
 export type Scope = "school" | "cuny" | "national";
 export type ResourceKind = "scholarship" | "mentorship" | "resource";
@@ -35,12 +36,7 @@ export default function ResourceCard({ item }: { item: ResourceItem }) {
     ? (item.schools || []).find((s) => !["all", "all-cuny", "cuny", "usa", "national"].includes(String(s).toLowerCase()))
     : undefined) as string | undefined;
   return (
-    <a
-      href={item.url || "#"}
-      target={item.url ? "_blank" : undefined}
-      rel={item.url ? "noopener noreferrer" : undefined}
-      className="group block rounded-2xl border border-[color:rgb(var(--glass-border)/0.18)] bg-card p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow"
-    >
+    <div className="group block rounded-2xl border border-[color:rgb(var(--glass-border)/0.18)] bg-card p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] uppercase tracking-wide text-text/60">
           {item.authority || item.category || item.kind}
@@ -59,7 +55,15 @@ export default function ResourceCard({ item }: { item: ResourceItem }) {
           )}
         </div>
       </div>
-      <div className="mt-1 text-sm font-semibold leading-snug text-heading">{item.name}</div>
+      <div className="mt-1 text-sm font-semibold leading-snug text-heading">
+        {item.url ? (
+          <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            {item.name}
+          </a>
+        ) : (
+          item.name
+        )}
+      </div>
       {item.description && (
         <p className="mt-1 line-clamp-3 text-sm text-text/85">{item.description}</p>
       )}
@@ -69,6 +73,16 @@ export default function ResourceCard({ item }: { item: ResourceItem }) {
         )}
         {amt && <span className="inline-flex items-center gap-1">Amount: {amt}</span>}
       </div>
-    </a>
+      <div className="mt-3 flex items-center justify-between text-xs">
+        <div className="text-text/60">
+          {item.url && (
+            <a href={item.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
+              Open link
+            </a>
+          )}
+        </div>
+        <ResourceReport kind={item.kind} id={item.id} />
+      </div>
+    </div>
   );
 }

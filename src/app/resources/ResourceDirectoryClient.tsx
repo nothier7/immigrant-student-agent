@@ -165,6 +165,13 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
           ))}
 
           <div className="flex-1" />
+          {/* Quick submit link */}
+          <a
+            href={`/schools/${encodeURIComponent(school === 'all-cuny' ? 'ccny' : school)}/submit`}
+            className="rounded-2xl border border-[color:rgb(var(--glass-border)/0.18)] px-3 py-1 text-xs hover:bg-[color:rgb(var(--card)/0.8)]"
+          >
+            Submit a resource
+          </a>
 
           {/* Added time window */}
           <label className="text-xs text-text/70">Added</label>
