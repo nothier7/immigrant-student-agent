@@ -1,17 +1,26 @@
 # Immigrant Student Agent (CCNY)
 
-An AI assistant that helps City College of New York (CCNY) immigrant/undocumented students navigate in‑state (resident) tuition, NYS Dream Act/TAP, scholarships, and on‑campus resources. The web app is built with Next.js and talks to a FastAPI backend that uses LangGraph, OpenAI, and Firecrawl to curate credible, CCNY‑specific information.
+An AI assistant that helps City College of New York (CCNY) immigrant/undocumented students navigate in‑state (resident) tuition, NYS Dream Act/TAP, scholarships, and on‑campus resources. Built with Next.js frontend and a FastAPI + OpenAI backend using pre-curated authoritative sources.
 
 Quick link to try locally: http://localhost:3000/ccny
 
 Note: This tool provides informational guidance only and is not legal advice. Always verify with official CCNY/CUNY/HESC sources.
 
-## What’s Inside
+## What's Inside
 
-- Next.js 15 frontend (TypeScript, Tailwind) with a chat UI under `/ccny`.
-- FastAPI backend (`src/app/backend`) that runs a LangGraph workflow over curated CCNY pages and trusted sources (CUNY, HESC, TheDream.US, Immigrants Rising).
-- Firecrawl integration for search/scrape with caching and rate‑limit handling; graceful fallbacks when cold‑starting or rate‑limited.
+- **Next.js 16 frontend** (TypeScript, Tailwind) with a chat UI under `/ccny`.
+- **FastAPI backend** (`src/app/backend`) with a simple agent that uses OpenAI (GPT-5.2) and pre-curated static context from trusted sources (CCNY, CUNY, HESC, TheDream.US, Immigrants Rising).
+- **Session management** for multi-turn conversations (e.g., residency status follow-ups).
 - Optional Supabase authentication scaffolding (login/signup screens) — not required to test the CCNY demo page.
+
+## Architecture (Simplified)
+
+The backend uses a single-call LLM architecture:
+
+1. **Conversational Detection** — Recognizes when users are wrapping up ("thanks", "bye") and responds naturally without dumping resources.
+2. **Residency Triage** — If a user appears undocumented but hasn't mentioned tuition status, asks a quick clarifying question.
+3. **Single LLM Call** — Sends the user query + pre-curated CCNY context to OpenAI and returns a structured JSON response with answer text and resource cards.
+4. **Static Context** — Uses authoritative, pre-curated information from CCNY Immigrant Student Center, HESC, TheDream.US, and Immigrants Rising (no live web scraping).
 
 ## Prerequisites
 
@@ -31,13 +40,9 @@ Frontend (root `.env.local`):
 
 Backend (`src/app/backend/.env`):
 
-- `OPENAI_API_KEY` — required for LLM responses
-- `FIRECRAWL_API_KEY` — recommended for live search/scrape; without it the agent uses curated/static context and fallbacks
-- `FIRECRAWL_CACHE_DIR` — recommended; e.g., `./.firecrawl_cache` (relative to backend folder)
-- `FAST_MODE` — set `1` during development to avoid slow scrapes on cold boot (optional)
-- `WORKFLOW_TIMEOUT_S` — default `18` (optional)
+- `OPENAI_API_KEY` — **required** for LLM responses
 
-Advanced Firecrawl tunables (optional): `FIRECRAWL_SCRAPE_TTL`, `FIRECRAWL_SEARCH_TTL`, `FIRECRAWL_COOLDOWN`, `FIRECRAWL_PDF_POLICY`, `FIRECRAWL_TIMEOUT_S`, `FIRECRAWL_CONNECT_TIMEOUT_S`, `FIRECRAWL_MAX_MD_CHARS`.
+That's it! No other API keys needed.
 
 ## Install & Run (Local)
 
@@ -58,17 +63,8 @@ cd -
 3) Create env files
 
 ```bash
-# Frontend (optional if not using Supabase auth)
-cp .env.local.example .env.local   # if you keep an example; otherwise create manually
-
-# Backend
-cp src/app/backend/.env.example src/app/backend/.env  # if you keep an example; otherwise create manually
-
-# Or create src/app/backend/.env with at least:
+# Backend - create src/app/backend/.env with:
 # OPENAI_API_KEY=sk-...
-# FIRECRAWL_API_KEY=fc-...            # recommended
-# FIRECRAWL_CACHE_DIR=./.firecrawl_cache
-# FAST_MODE=1                         # optional for dev
 ```
 
 4) Run both servers together
@@ -80,8 +76,8 @@ npm run dev
 
 Then open http://localhost:3000/ccny and ask, for example:
 
-- “Undocumented freshman at CCNY — how do I get in‑state (resident) tuition?”
-- “DACA junior CS at CCNY, low income, 12 credits — scholarships?”
+- "Undocumented freshman at CCNY — how do I get in‑state (resident) tuition?"
+- "DACA junior CS at CCNY, low income, 12 credits — scholarships?"
 
 ## Useful Scripts
 
@@ -105,35 +101,52 @@ curl http://127.0.0.1:8001/health
 
 ## How It Works (High Level)
 
-- Classifies intent (e.g., residency, financial_aid, scholarships) via OpenAI (`gpt-4o-mini`).
-- If the user likely needs residency guidance, the agent asks a quick follow‑up about in‑state tuition status to tailor the answer.
-- Curates CCNY core pages and, when relevant, trusted system‑wide sources (HESC, TheDream.US, Immigrants Rising).
-- Uses Firecrawl search/scrape with caching and soft timeouts; falls back to curated/static context and key links during cold start or rate limits.
-- Returns a concise answer with cited links and “resource cards” you can filter, copy, or export.
+1. **Conversational closures** — If the user says something like "thanks" or "that's it", the agent responds with a friendly message and no resource cards.
+2. **Residency check** — If the user appears undocumented/DACA/TPS but hasn't mentioned in-state tuition, the agent asks a clarifying question to tailor guidance.
+3. **LLM processing** — The query is sent to OpenAI (GPT-5.2) along with pre-curated context about CCNY resources, tuition pathways, scholarships, and financial aid.
+4. **Structured response** — The agent returns a concise answer with cited links and "resource cards" (3-6 relevant resources with deadlines and explanations).
+
+### Key Resources in Context
+
+- CCNY Immigrant Student Center
+- CCNY In-State Tuition Guide
+- NYS Dream Act (HESC)
+- CCNY Scholarships for Immigrant Students
+- TheDream.US National Scholarship
+- Immigrants Rising Scholarship Database
+- CCNY Dream Team
 
 ## API (Backend)
 
 Base: `http://127.0.0.1:8001`
 
-- `GET /health` — basic health and workflow import status
-- `POST /warm` — warms caches in the background
+- `GET /` — Root endpoint
+- `GET /health` — Health check
 - `POST /chat` — body: `{ "message": string, "session_id"?: string }`
-  - Response includes `ask` (if the agent needs a quick confirmation), `answer_text`, `sources[]`, and `cards[]`.
+  - Response includes `ask` (if the agent needs a clarifying question), `answer_text`, `sources[]`, and `cards[]`.
 
 The Next.js route `/api/ccny` proxies to `/chat` and exposes `PY_BACKEND_URL`/`CCNY_API_TIMEOUT_MS` overrides.
 
+## Backend Dependencies
+
+- `fastapi` — Web framework
+- `uvicorn` — ASGI server
+- `langchain-openai` — OpenAI integration
+- `pydantic` — Data validation
+- `python-dotenv` — Environment variables
+- `openai` — OpenAI API client
+
 ## Troubleshooting
 
-- Only seeing fallback links? Make sure `OPENAI_API_KEY` and (ideally) `FIRECRAWL_API_KEY` are set in `src/app/backend/.env`. Set `FAST_MODE=1` for snappier dev.
-- Supabase errors on auth pages? Provide `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, or avoid visiting `/login` and `/signup` while testing.
-- 429/timeout from Firecrawl? The backend will cool down and serve curated/static context; try again shortly.
-- Can’t import workflow? Check `src/app/backend/pyproject.toml` is synced (`uv sync`) and Python is 3.11+.
+- **Only seeing fallback links?** Make sure `OPENAI_API_KEY` is set in `src/app/backend/.env`.
+- **Supabase errors on auth pages?** Provide `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, or avoid visiting `/login` and `/signup` while testing.
+- **Import errors?** Check `src/app/backend/pyproject.toml` is synced (`uv sync`) and Python is 3.11+.
 
 ## Deployment (Outline)
 
-- Backend: Deploy FastAPI (e.g., Render/Fly/Docker). Start command example: `uv run uvicorn server:app --host 0.0.0.0 --port 8001`. Set `OPENAI_API_KEY`, `FIRECRAWL_API_KEY`, and persistent `FIRECRAWL_CACHE_DIR`.
-- Frontend: Deploy Next.js (e.g., Vercel). Set `PY_BACKEND_URL` to your deployed backend `/chat` URL and any Supabase env if using auth.
+- **Backend**: Deploy FastAPI (e.g., Render/Fly/Docker). Start command: `uv run uvicorn server:app --host 0.0.0.0 --port 8001`. Set `OPENAI_API_KEY`.
+- **Frontend**: Deploy Next.js (e.g., Vercel). Set `PY_BACKEND_URL` to your deployed backend `/chat` URL and any Supabase env if using auth.
 
 ---
 
-Questions or improvements you’d like to see? Open an issue or PR.
+Questions or improvements you'd like to see? Open an issue or PR.
