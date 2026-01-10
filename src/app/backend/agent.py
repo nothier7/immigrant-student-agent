@@ -138,6 +138,14 @@ INSTATE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Conversational closures - user is wrapping up, not asking for resources
+CLOSING_PHRASES = re.compile(
+    r"^\s*(thanks?|thank\s*you|ty|thx|that'?s?\s*(it|all)|"
+    r"i'?m?\s*(good|done|set)|i\s+am\s+(good|done|set)|got\s*it|perfect|great|awesome|cool|"
+    r"ok(ay)?|bye|goodbye|see\s*ya|later|cheers|appreciate\s*it)\s*[.!]?\s*$",
+    re.IGNORECASE
+)
+
 
 # ---------- System Prompt ----------
 SYSTEM_PROMPT = """You are a helpful assistant for City College of New York (CCNY) students, specializing in support for undocumented and immigrant students.
@@ -184,6 +192,10 @@ class Agent:
         mentions_instate = bool(INSTATE_PATTERN.search(query))
         return looks_undoc and not mentions_instate
     
+    def is_conversational_closing(self, query: str) -> bool:
+        """Check if user is just wrapping up the conversation (thanks, goodbye, etc.)."""
+        return bool(CLOSING_PHRASES.match(query.strip()))
+    
     def run(self, query: str, has_instate: Optional[bool] = None) -> AgentResponse:
         """
         Process a user query and return a response.
@@ -195,6 +207,14 @@ class Agent:
         Returns:
             AgentResponse with answer text, sources, and resource cards
         """
+        # Handle conversational closures - no resources needed
+        if self.is_conversational_closing(query):
+            return AgentResponse(
+                text="Of course! If you have any other questions, I'm here to help. Good luck! 🎓",
+                sources=[],
+                cards=[]
+            )
+        
         # Triage: Ask about residency if needed
         if has_instate is None and self.needs_residency_check(query):
             return AgentResponse(
