@@ -116,6 +116,7 @@ export default async function ResourcesPage() {
         <p className="mt-2 text-sm text-text/80">
           Filter scholarships, mentorships, and resources. Data updates as the community grows.
         </p>
+        <p className="mt-1 text-xs text-text/70">También puedes explorar y buscar en español.</p>
       </main>
 
       <ResourceDirectoryClient initial={initial} schools={schools} />

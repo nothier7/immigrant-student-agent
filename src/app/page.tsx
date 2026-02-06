@@ -1,4 +1,8 @@
-import { Header, Hero, Features, ValueProps, Footer } from "./components";
+import Header from "./components/Header";
+import Hero from "./components/Hero";
+import Features from "./components/Features";
+import ValueProps from "./components/ValueProps";
+import Footer from "./components/Footer";
 
 export default function Home() {
   return (

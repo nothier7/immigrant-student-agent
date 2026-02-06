@@ -3,8 +3,11 @@ import { motion } from "framer-motion";
 import { ArrowRight, GraduationCap, Handshake, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { buttonCn } from "@/app/components/ui/Button";
+import IntakeWizard from "@/app/components/IntakeWizard";
 
-export default function Hero() {
+type School = { code: string; name: string };
+
+export default function Hero({ schools }: { schools?: School[] }) {
   return (
     <section className="relative mx-auto max-w-7xl px-4 pt-16 md:pt-24">
       <div className="mx-auto grid max-w-3xl gap-8 text-center">
@@ -22,6 +25,9 @@ export default function Hero() {
           Browse the resource directory, visit your school hub, or try the CCNY agent demo. All undocu‑friendly, with
           verified links and clear deadlines.
         </p>
+        <p className="text-xs text-text/70">
+          ¿Prefieres español? Puedes hacer preguntas en español y revisaremos los recursos juntos.
+        </p>
 
         {/* Centered CTA */}
         <div className="mx-auto flex w-full max-w-xl items-center justify-center gap-2">
@@ -36,6 +42,8 @@ export default function Hero() {
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </div>
+
+        <IntakeWizard variant="hero" schools={schools} />
 
         {/* Three quick highlights */}
         <div className="mx-auto grid max-w-5xl grid-cols-1 gap-3 pt-8 md:grid-cols-3">

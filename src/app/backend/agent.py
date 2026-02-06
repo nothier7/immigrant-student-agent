@@ -36,7 +36,21 @@ class AgentResponse:
 
 
 # ---------- Static Context (Pre-curated authoritative sources) ----------
-STATIC_CONTEXT = """
+GENERAL_CONTEXT = """
+## NYS Dream Act (HESC)
+URL: https://www.hesc.ny.gov/applying-aid/nys-dream-act/
+The José Peralta NYS Dream Act allows eligible undocumented students to apply for state financial aid including TAP, part-time TAP, and other state-funded scholarships. Apply through the HESC Dream Act Application (not FAFSA).
+
+## TheDream.US Scholarships
+URL: https://www.thedream.us/
+National scholarships for undocumented/DACA students. Offers National Scholarship (up to full tuition) and Opportunity Scholarship. Deadlines are seasonal (typically fall and spring).
+
+## Immigrants Rising Scholarship Database
+URL: https://immigrantsrising.org/resource/scholarships/
+Regularly updated database of 100+ scholarships that don't require proof of citizenship or legal status.
+"""
+
+CCNY_CONTEXT = """
 ## CCNY Immigrant Student Center
 URL: https://www.ccny.cuny.edu/immigrantstudentcenter
 The CCNY Immigrant Student Center provides advising, events, legal referrals, and resources for undocumented and immigrant students at City College of New York.
@@ -62,22 +76,42 @@ Undocumented students cannot access federal FAFSA but CAN access:
 ## CCNY Dream Team
 URL: https://www.ccny.cuny.edu/immigrantstudentcenter/ccny-dream-team
 Peer support organization for immigrant/undocumented students. Offers community, events, and advocacy training.
-
-## NYS Dream Act (HESC)
-URL: https://www.hesc.ny.gov/applying-aid/nys-dream-act/
-The José Peralta NYS Dream Act allows eligible undocumented students to apply for state financial aid including TAP, part-time TAP, and other state-funded scholarships. Apply through the HESC Dream Act Application (not FAFSA).
-
-## TheDream.US Scholarships
-URL: https://www.thedream.us/
-National scholarships for undocumented/DACA students. Offers National Scholarship (up to full tuition) and Opportunity Scholarship. Deadlines are seasonal (typically fall and spring).
-
-## Immigrants Rising Scholarship Database
-URL: https://immigrantsrising.org/resource/scholarships/
-Regularly updated database of 100+ scholarships that don't require proof of citizenship or legal status.
 """
 
+def build_context(school_code: Optional[str]) -> str:
+    if (school_code or "").lower() == "ccny":
+        return f"{CCNY_CONTEXT}\n\n{GENERAL_CONTEXT}"
+    return GENERAL_CONTEXT
+
 # ---------- Default Resource Cards ----------
-DEFAULT_CARDS = [
+DEFAULT_CARDS_GENERAL = [
+    ResourceCard(
+        name="NYS Dream Act (TAP/State Aid)",
+        url="https://www.hesc.ny.gov/applying-aid/nys-dream-act/",
+        category="grant",
+        authority="HESC",
+        deadline="varies by term",
+        why="State financial aid for eligible undocumented students"
+    ),
+    ResourceCard(
+        name="TheDream.US National Scholarship",
+        url="https://www.thedream.us/",
+        category="scholarship",
+        authority="TheDream.US",
+        deadline="seasonal",
+        why="Up to full tuition for DACA/undocumented students"
+    ),
+    ResourceCard(
+        name="Immigrants Rising Scholarships",
+        url="https://immigrantsrising.org/resource/scholarships/",
+        category="scholarship",
+        authority="Immigrants Rising",
+        deadline="rolling",
+        why="100+ scholarships without citizenship requirements"
+    ),
+]
+
+DEFAULT_CARDS_CCNY = [
     ResourceCard(
         name="CCNY In-State Tuition Guide",
         url="https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-state-tuition",
@@ -148,19 +182,19 @@ CLOSING_PHRASES = re.compile(
 
 
 # ---------- System Prompt ----------
-SYSTEM_PROMPT = """You are a helpful assistant for City College of New York (CCNY) students, specializing in support for undocumented and immigrant students.
+SYSTEM_PROMPT = """You are a helpful assistant for CUNY students, specializing in support for undocumented and immigrant students.
 
 Your role:
 - Help students understand tuition residency requirements, financial aid options, and scholarships
 - Provide clear, actionable guidance based on the context provided
-- Always prioritize CCNY, CUNY, HESC (NY state), TheDream.US, and Immigrants Rising as authoritative sources
+- Always prioritize CCNY (when relevant), CUNY, HESC (NY state), TheDream.US, and Immigrants Rising as authoritative sources
 
 Key rules:
 1. If a student appears undocumented/DACA/TPS and hasn't confirmed they have in-state tuition, explain residency pathways FIRST
 2. Never promise eligibility - always direct to official sources for verification
 3. Be concise: 1-2 sentence intro, then 4-6 bullet points with specific steps/links
 4. Include relevant deadlines when known
-5. Only reference CCNY or CUNY-wide resources (not other campuses like Hunter, Baruch, etc.)
+5. If the student is not at CCNY, avoid CCNY-only resources; prefer state-wide or national resources and suggest checking their campus hub
 
 Respond in this JSON format:
 {
@@ -186,8 +220,10 @@ class Agent:
     def __init__(self):
         self.llm = ChatOpenAI(model="gpt-5.2", temperature=0.1)
     
-    def needs_residency_check(self, query: str) -> bool:
+    def needs_residency_check(self, query: str, profile: Optional[Dict[str, Any]] = None) -> bool:
         """Check if user appears undocumented but hasn't mentioned tuition status."""
+        if isinstance(profile, dict) and isinstance(profile.get("has_instate"), bool):
+            return False
         looks_undoc = bool(UNDOC_PATTERN.search(query))
         mentions_instate = bool(INSTATE_PATTERN.search(query))
         return looks_undoc and not mentions_instate
@@ -196,7 +232,13 @@ class Agent:
         """Check if user is just wrapping up the conversation (thanks, goodbye, etc.)."""
         return bool(CLOSING_PHRASES.match(query.strip()))
     
-    def run(self, query: str, has_instate: Optional[bool] = None) -> AgentResponse:
+    def run(
+        self,
+        query: str,
+        has_instate: Optional[bool] = None,
+        school_code: Optional[str] = None,
+        profile: Optional[Dict[str, Any]] = None,
+    ) -> AgentResponse:
         """
         Process a user query and return a response.
         
@@ -214,22 +256,46 @@ class Agent:
                 sources=[],
                 cards=[]
             )
+
+        # Profile override for in-state tuition
+        if isinstance(profile, dict) and isinstance(profile.get("has_instate"), bool):
+            has_instate = profile.get("has_instate")
         
+        # Determine school context early
+        school_key = (school_code or (profile.get("school_code") if isinstance(profile, dict) else None) or "ccny").lower()
+
         # Triage: Ask about residency if needed
-        if has_instate is None and self.needs_residency_check(query):
+        if has_instate is None and self.needs_residency_check(query, profile=profile):
+            campus_label = "CCNY" if school_key == "ccny" else "your campus"
             return AgentResponse(
-                ask="Do you already pay **in-state (resident) tuition** at CCNY?"
+                ask=f"Do you already pay **in-state (resident) tuition** at {campus_label}?"
             )
         
         # Build the prompt with context
+        context = build_context(school_key)
+        default_cards = DEFAULT_CARDS_CCNY if school_key == "ccny" else DEFAULT_CARDS_GENERAL
         context_note = ""
         if has_instate is True:
             context_note = "\n\nNote: User confirms they already have in-state tuition. Focus on scholarships and financial aid."
         elif has_instate is False:
             context_note = "\n\nNote: User does NOT have in-state tuition yet. Prioritize explaining residency pathways first."
+        if school_key != "ccny":
+            context_note += "\n\nNote: User is not at CCNY. Avoid CCNY-only resources and suggest their campus hub."
+        if isinstance(profile, dict):
+            profile_lines = []
+            if profile.get("school_code"):
+                profile_lines.append(f"School code: {profile.get('school_code')}")
+            if profile.get("status"):
+                profile_lines.append(f"Status: {profile.get('status')}")
+            if profile.get("goal"):
+                profile_lines.append(f"Goal: {profile.get('goal')}")
+            if isinstance(profile.get("has_instate"), bool):
+                profile_lines.append(f"In-state tuition: {profile.get('has_instate')}")
+            if profile_lines:
+                context_note += "\n\nUser profile:\n- " + "\n- ".join(profile_lines)
         
-        user_message = f"""Context about CCNY resources:
-{STATIC_CONTEXT}
+        user_message = f"""Context about resources:
+        {context}
 
 ---
 
@@ -243,16 +309,16 @@ Provide a helpful response with relevant resource cards."""
                 HumanMessage(content=user_message)
             ])
             
-            return self._parse_response(response.content or "")
+            return self._parse_response(response.content or "", default_cards)
         except Exception as e:
             # Fallback response if LLM fails
             return AgentResponse(
                 text="I'm having trouble connecting right now. Here are key resources to get started:",
-                sources=[SourceLink(url=c.url, title=c.name) for c in DEFAULT_CARDS],
-                cards=DEFAULT_CARDS
+                sources=[SourceLink(url=c.url, title=c.name) for c in default_cards],
+                cards=default_cards
             )
     
-    def _parse_response(self, content: str) -> AgentResponse:
+    def _parse_response(self, content: str, default_cards: List[ResourceCard]) -> AgentResponse:
         """Parse LLM response into structured AgentResponse."""
         # Try to extract JSON from the response
         try:
@@ -297,8 +363,8 @@ Provide a helpful response with relevant resource cards."""
             
             # Use defaults if no cards extracted
             if not cards:
-                cards = DEFAULT_CARDS
-                sources = [SourceLink(url=c.url, title=c.name) for c in DEFAULT_CARDS]
+                cards = default_cards
+                sources = [SourceLink(url=c.url, title=c.name) for c in default_cards]
             
             return AgentResponse(text=answer, sources=sources, cards=cards)
             
@@ -306,7 +372,7 @@ Provide a helpful response with relevant resource cards."""
             # If JSON parsing fails, treat as plain text response
             return AgentResponse(
                 text=content,
-                sources=[SourceLink(url=c.url, title=c.name) for c in DEFAULT_CARDS],
-                cards=DEFAULT_CARDS
+                sources=[SourceLink(url=c.url, title=c.name) for c in default_cards],
+                cards=default_cards
             )
 

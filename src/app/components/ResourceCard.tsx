@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import ResourceReport from "@/app/components/ResourceReport";
+import ResourceSaveButton from "@/app/components/ResourceSaveButton";
 
 export type Scope = "school" | "cuny" | "national";
 export type ResourceKind = "scholarship" | "mentorship" | "resource";
@@ -35,6 +37,7 @@ export default function ResourceCard({ item }: { item: ResourceItem }) {
   const campusCode = (item.scope === "school"
     ? (item.schools || []).find((s) => !["all", "all-cuny", "cuny", "usa", "national"].includes(String(s).toLowerCase()))
     : undefined) as string | undefined;
+  const detailHref = `/resources/${encodeURIComponent(item.kind)}/${encodeURIComponent(item.id)}`;
   return (
     <div className="group block rounded-2xl border border-[color:rgb(var(--glass-border)/0.18)] bg-card p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow">
       <div className="flex items-center justify-between gap-3">
@@ -56,13 +59,9 @@ export default function ResourceCard({ item }: { item: ResourceItem }) {
         </div>
       </div>
       <div className="mt-1 text-sm font-semibold leading-snug text-heading">
-        {item.url ? (
-          <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-            {item.name}
-          </a>
-        ) : (
-          item.name
-        )}
+        <Link href={detailHref} className="hover:underline">
+          {item.name}
+        </Link>
       </div>
       {item.description && (
         <p className="mt-1 line-clamp-3 text-sm text-text/85">{item.description}</p>
@@ -73,15 +72,21 @@ export default function ResourceCard({ item }: { item: ResourceItem }) {
         )}
         {amt && <span className="inline-flex items-center gap-1">Amount: {amt}</span>}
       </div>
-      <div className="mt-3 flex items-center justify-between text-xs">
-        <div className="text-text/60">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 text-text/60">
+          <Link href={detailHref} className="underline underline-offset-4">
+            Details
+          </Link>
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
               Open link
             </a>
           )}
         </div>
-        <ResourceReport kind={item.kind} id={item.id} />
+        <div className="flex items-center gap-2">
+          <ResourceSaveButton id={item.id} kind={item.kind} name={item.name} url={item.url} deadline={item.deadline} />
+          <ResourceReport kind={item.kind} id={item.id} />
+        </div>
       </div>
     </div>
   );

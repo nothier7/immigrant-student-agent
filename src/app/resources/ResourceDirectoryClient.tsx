@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ResourceCard, { ResourceItem, ResourceKind } from "@/app/components/ResourceCard";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSavedResources } from "@/app/components/useSavedResources";
 
 type SortKey = "date" | "deadline";
 type AddedWindow = "all" | "30d";
@@ -29,6 +30,9 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
   const [added, setAdded] = useState<AddedWindow>("all");
   const [school, setSchool] = useState<string>("all-cuny");
   const [q, setQ] = useState<string>("");
+  const [savedOnly, setSavedOnly] = useState(false);
+  const savedItems = useSavedResources();
+  const savedKeys = useMemo(() => new Set(savedItems.map((i) => i.key)), [savedItems]);
 
   const toggleKind = (k: ResourceKind) => setKinds((m) => ({ ...m, [k]: !m[k] }));
 
@@ -55,6 +59,8 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
     }
     const urlQ = (search.get("q") || "").trim();
     setQ(urlQ);
+    const urlSaved = search.get("saved");
+    setSavedOnly(urlSaved === "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -85,11 +91,14 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
     // q
     if (q && q.trim().length > 0) params.set("q", q.trim());
     else params.delete("q");
+    // saved
+    if (savedOnly) params.set("saved", "1");
+    else params.delete("saved");
 
     const next = params.toString();
     const curr = search?.toString() || "";
     if (next !== curr) router.replace(`?${next}`);
-  }, [school, sortBy, added, kinds, q, router, search]);
+  }, [school, sortBy, added, kinds, q, savedOnly, router, search]);
 
   const items = useMemo(() => {
     let list = initial.filter((i) => kinds[i.kind]);
@@ -109,6 +118,9 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
       const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
       list = list.filter((i) => new Date(i.created_at).getTime() >= cutoff);
     }
+    if (savedOnly) {
+      list = list.filter((i) => savedKeys.has(`${i.kind}:${i.id}`));
+    }
     if (sortBy === "date") list = list.slice().sort(byDateDesc);
     else list = list.slice().sort((a, b) => {
       const da = parseDeadline(a.deadline);
@@ -119,7 +131,7 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
       return da - db;
     });
     return list;
-  }, [initial, kinds, school, q, added, sortBy]);
+  }, [initial, kinds, school, q, added, sortBy, savedOnly, savedKeys]);
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-6">
@@ -163,6 +175,17 @@ export default function ResourceDirectoryClient({ initial, schools }: { initial:
               {k}
             </button>
           ))}
+
+          <button
+            onClick={() => setSavedOnly((v) => !v)}
+            className={`rounded-full border px-3 py-1 text-xs ${
+              savedOnly
+                ? "border-[color:rgb(var(--primary))] bg-[color:rgb(var(--primary)/0.08)] text-heading"
+                : "border-[color:rgb(var(--glass-border)/0.22)] text-text/80 hover:bg-[color:rgb(var(--card)/0.8)]"
+            }`}
+          >
+            Saved {savedItems.length ? `(${savedItems.length})` : ""}
+          </button>
 
           <div className="flex-1" />
           {/* Quick submit link */}

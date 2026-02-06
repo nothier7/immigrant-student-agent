@@ -32,6 +32,8 @@ except Exception as e:
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     message: str = Field(..., min_length=1)
+    school_code: Optional[str] = None
+    profile: Optional[Dict[str, Any]] = None
 
 class Source(BaseModel):
     url: str
@@ -106,11 +108,28 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Agent not available: {AGENT_ERROR}")
     
     sid = req.session_id or str(uuid.uuid4())
-    sess = SESSIONS.setdefault(sid, {"pending_residency": False, "orig_query": None})
+    sess = SESSIONS.setdefault(sid, {"pending_residency": False, "orig_query": None, "school_code": None})
+    if req.school_code:
+        sess["school_code"] = req.school_code
+
+    profile_has_instate = None
+    if isinstance(req.profile, dict) and "has_instate" in req.profile:
+        profile_has_instate = req.profile.get("has_instate")
+        if isinstance(profile_has_instate, str):
+            val = profile_has_instate.strip().lower()
+            if val in ["yes", "true", "1"]:
+                profile_has_instate = True
+            elif val in ["no", "false", "0"]:
+                profile_has_instate = False
     
     # Handle pending residency question
     if sess.get("pending_residency"):
         orig_query = sess.get("orig_query", req.message)
+        if isinstance(profile_has_instate, bool):
+            sess["pending_residency"] = False
+            sess["orig_query"] = None
+            result = _agent.run(orig_query, has_instate=profile_has_instate, school_code=sess.get("school_code"), profile=req.profile)
+            return _format_response(sid, result)
         
         # Check NO first - "I do not have in-state" contains "i do" and "in-state"
         # but should be treated as NO, not YES
@@ -120,19 +139,20 @@ def chat(req: ChatRequest):
             has_instate = True
         else:
             # Unclear response, ask again
+            campus_label = "CCNY" if (sess.get("school_code") or "").lower() == "ccny" else "your campus"
             return ChatResponse(
-                session_id=sid, 
-                ask="Just to confirm: do you already pay **in-state (resident) tuition** at CCNY?"
+                session_id=sid,
+                ask=f"Just to confirm: do you already pay **in-state (resident) tuition** at {campus_label}?"
             )
         
         # Clear pending state and run with known residency status
         sess["pending_residency"] = False
         sess["orig_query"] = None
-        result = _agent.run(orig_query, has_instate=has_instate)
+        result = _agent.run(orig_query, has_instate=has_instate, school_code=sess.get("school_code"), profile=req.profile)
         return _format_response(sid, result)
     
     # Normal flow: run the agent
-    result = _agent.run(req.message)
+    result = _agent.run(req.message, has_instate=profile_has_instate if isinstance(profile_has_instate, bool) else None, school_code=sess.get("school_code"), profile=req.profile)
     
     # If agent needs to ask about residency, save state
     if result.ask:

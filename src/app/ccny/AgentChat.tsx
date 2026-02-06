@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, ChevronDown, SlidersHorizontal, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSearchParams } from "next/navigation";
 
 type Source = { url: string; title?: string | null };
 type UICard = {
@@ -28,6 +29,13 @@ type ChatResp = {
 type Msg = { role: "user" | "agent"; text: string; ts: number };
 
 const AUTH_ORDER = ["CCNY", "CUNY", "HESC", "TheDream.US", "Immigrants Rising"];
+
+type Profile = {
+  school_code?: string;
+  status?: string;
+  has_instate?: boolean | null;
+  goal?: string;
+};
 
 function hostFromUrl(u: string): string | undefined {
   try {
@@ -94,7 +102,7 @@ function Markdown({ content }: { content: string }) {
   );
 }
 
-export default function AgentChat() {
+export default function AgentChat({ schoolCode }: { schoolCode?: string }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [cards, setCards] = useState<UICard[]>([]);
@@ -106,11 +114,51 @@ export default function AgentChat() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [showResources, setShowResources] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [prefill, setPrefill] = useState<string | null>(null);
+  const [prefillApplied, setPrefillApplied] = useState(false);
+  const [prefillDismissed, setPrefillDismissed] = useState(false);
+  const [prefillKey, setPrefillKey] = useState<string | null>(null);
+  const search = useSearchParams();
+  const searchKey = search?.toString();
+
+  const resolvedSchoolCode = (profile?.school_code || schoolCode || "ccny").toLowerCase();
+  const sessionStorageKey = `agent_sid_${resolvedSchoolCode}`;
 
   useEffect(() => {
-    const sid = localStorage.getItem("ccny_sid");
-    if (sid) setSessionId(sid);
-  }, []);
+    const sid = localStorage.getItem(sessionStorageKey);
+    setSessionId(sid || null);
+  }, [sessionStorageKey]);
+
+  useEffect(() => {
+    if (!search) return;
+    const school = search.get("school")?.toLowerCase();
+    const status = search.get("status") || undefined;
+    const instate = search.get("instate") || undefined;
+    const goal = search.get("goal") || undefined;
+    const has_instate = instate === "yes" ? true : instate === "no" ? false : null;
+    if (school || status || instate || goal) {
+      setProfile({
+        school_code: school || schoolCode || undefined,
+        status,
+        has_instate,
+        goal,
+      });
+    }
+    const prefillParam = search.get("prefill");
+    if (prefillParam && prefillParam !== prefillKey) {
+      setPrefillKey(prefillParam);
+      setPrefill(prefillParam);
+      setPrefillApplied(false);
+      setPrefillDismissed(false);
+    }
+    if (prefillParam && !prefillApplied) {
+      if (inputRef.current && !inputRef.current.value) {
+        inputRef.current.value = prefillParam;
+      }
+      setPrefillApplied(true);
+    }
+  }, [search, searchKey, schoolCode, prefillApplied, prefillKey]);
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
@@ -140,9 +188,10 @@ export default function AgentChat() {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
       setShowScrollButton(!atBottom);
     };
-    el.addEventListener("scroll", onScroll);
+    const options: AddEventListenerOptions = { passive: true };
+    el.addEventListener("scroll", onScroll, options);
     onScroll();
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll, options);
   }, []);
 
   // Keyboard shortcut: '/' focuses the chat input (common pattern)
@@ -172,10 +221,16 @@ export default function AgentChat() {
     setLoading(true);
     setMessages((m) => [...m, { role: "user", text, ts: Date.now() }]);
     try {
+      const payload: Record<string, unknown> = {
+        message: text,
+        session_id: sessionId,
+        school_code: resolvedSchoolCode,
+      };
+      if (profile) payload.profile = profile;
       const res = await fetch("/api/ccny", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, session_id: sessionId }),
+        body: JSON.stringify(payload),
       });
       const raw = await res.text();
       let data: ChatResp;
@@ -191,7 +246,7 @@ export default function AgentChat() {
       } else {
         if (!sessionId && data.session_id) {
           setSessionId(data.session_id);
-          localStorage.setItem("ccny_sid", data.session_id);
+          localStorage.setItem(sessionStorageKey, data.session_id);
         }
 
         if (data.ask) {
@@ -295,6 +350,23 @@ export default function AgentChat() {
               ))}
             </div>
             <div className="flex-1" />
+            {profile && (
+              <div className="hidden items-center gap-2 text-[11px] text-text/70 sm:flex">
+                <span className="rounded-full border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1">
+                  {profile.school_code?.toUpperCase() || "CUNY"}
+                </span>
+                {profile.status && (
+                  <span className="rounded-full border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1">
+                    {profile.status.split("_").join(" ")}
+                  </span>
+                )}
+                {profile.goal && (
+                  <span className="rounded-full border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1">
+                    {profile.goal}
+                  </span>
+                )}
+              </div>
+            )}
             <button
               onClick={copyLinks}
               className="rounded-md border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1 text-xs text-text/90 hover:bg-[color:rgb(var(--card)/0.8)]"
@@ -312,6 +384,33 @@ export default function AgentChat() {
               className="rounded-md border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1 text-xs text-text/90 hover:bg-[color:rgb(var(--card)/0.8)]"
             >
               Reset
+            </button>
+          </div>
+        </div>
+      )}
+
+      {prefill && !prefillDismissed && (
+        <div className="mb-2 rounded-xl border border-[color:rgb(var(--glass-border)/0.18)] bg-card p-2 text-xs text-text/70">
+          <div>We prefilled a message from your intake. Edit it or send as-is.</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (inputRef.current) {
+                  inputRef.current.value = prefill;
+                  inputRef.current.focus();
+                }
+              }}
+              className="rounded-full border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1 text-[11px] hover:bg-[color:rgb(var(--card)/0.8)]"
+            >
+              Use message
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrefillDismissed(true)}
+              className="rounded-full border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-1 text-[11px] hover:bg-[color:rgb(var(--card)/0.8)]"
+            >
+              Dismiss
             </button>
           </div>
         </div>
@@ -475,6 +574,7 @@ export default function AgentChat() {
             placeholder="Ask about in-state tuition, NYSDA/TAP, scholarships, grants…"
             className="max-h-40 min-h-[38px] flex-1 resize-none rounded-xl border border-[color:rgb(var(--glass-border)/0.18)] bg-[color:rgb(var(--card)/0.9)] px-3 py-2 text-sm text-text placeholder:text-text/60"
             disabled={loading}
+            aria-label="Chat message"
           />
           <button
             type="submit"
@@ -484,24 +584,10 @@ export default function AgentChat() {
             {loading ? "…" : "Send"}
           </button>
         </div>
-        <div className="mt-1 flex items-center justify-between text-[11px] text-text/60">
-          <div className="hidden gap-1 md:flex">
-            {[
-              "I’m undocumented at CCNY — how do I get in-state tuition?",
-              "DACA junior CS at CCNY — scholarships I’m eligible for?",
-              "Financial aid options at CCNY without SSN?",
-            ].map((q) => (
-              <button
-                key={q}
-                type="button"
-                onClick={() => send(q)}
-                className="rounded-full border border-[color:rgb(var(--glass-border)/0.18)] px-2 py-0.5 hover:bg-[color:rgb(var(--card)/0.8)]"
-              >
-                {q}
-              </button>
-            ))}
+        <div className="mt-1 flex items-center justify-end text-[11px] text-text/60">
+          <div className="text-[11px] text-text/60">
+            Press Enter to send • Shift+Enter for newline • Not legal advice
           </div>
-          <div>Press Enter to send • Shift+Enter for newline</div>
         </div>
       </form>
 

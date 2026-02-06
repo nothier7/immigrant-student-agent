@@ -1,6 +1,7 @@
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import AgentChat from "./AgentChat";
+import IntakeWizard from "@/app/components/IntakeWizard";
 
 export default function CCNYDemoPage() {
   return (
@@ -17,8 +18,12 @@ export default function CCNYDemoPage() {
         <p className="mt-2 text-sm text-text/80">
           Ask about in-state tuition, NYS Dream Act/TAP, scholarships, grants, or CCNY immigrant resources.
         </p>
+        <p className="mt-1 text-xs text-text/70">
+          También puedes escribir en español.
+        </p>
+        <IntakeWizard variant="inline" initialSchoolCode="ccny" />
         <div className="mt-6">
-          <AgentChat />
+          <AgentChat schoolCode="ccny" />
         </div>
       </main>
       <Footer />

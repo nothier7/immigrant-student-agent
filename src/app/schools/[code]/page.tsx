@@ -189,14 +189,13 @@ export default async function SchoolHubPage({ params }: { params: Promise<{ code
           <p className="mt-1 text-sm text-text/80">
             Ask about in-state tuition, NYS DREAM Act/TAP, scholarships, grants, or school resources.
           </p>
+          {schoolCode !== "ccny" && (
+            <div className="mt-2 rounded-2xl border border-[color:rgb(var(--glass-border)/0.18)] bg-card p-3 text-xs text-text/70">
+              This chat uses state-wide and national guidance. For campus-specific details, use the links above or submit a resource.
+            </div>
+          )}
           <div className="mt-3">
-            {schoolCode === "ccny" ? (
-              <AgentChat />
-            ) : (
-              <div className="rounded-2xl border border-[color:rgb(var(--glass-border)/0.18)] bg-card p-4 text-sm text-text/80">
-                School-specific agent chat is coming soon for {title}. In the meantime, explore resources below.
-              </div>
-            )}
+            <AgentChat schoolCode={schoolCode} />
           </div>
         </section>
 

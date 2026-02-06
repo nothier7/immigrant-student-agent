@@ -8,6 +8,21 @@ type Props = {
   id: string;
 };
 
+type ReportOpenListener = (openId: string) => void;
+
+const reportOpenListeners = new Set<ReportOpenListener>();
+
+function subscribeReportOpen(listener: ReportOpenListener) {
+  reportOpenListeners.add(listener);
+  return () => {
+    reportOpenListeners.delete(listener);
+  };
+}
+
+function emitReportOpen(openId: string) {
+  reportOpenListeners.forEach((listener) => listener(openId));
+}
+
 export default function ResourceReport({ kind, id }: Props) {
   const supabase = createSupabaseBrowser();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,12 +63,9 @@ export default function ResourceReport({ kind, id }: Props) {
 
   // Ensure only one report popover is open at a time across the page
   useEffect(() => {
-    function onOpenEvent(e: Event) {
-      const detailId = (e as CustomEvent<string>).detail;
-      if (detailId !== id) setOpen(false);
-    }
-    document.addEventListener("resource-report-open", onOpenEvent as EventListener);
-    return () => document.removeEventListener("resource-report-open", onOpenEvent as EventListener);
+    return subscribeReportOpen((openId) => {
+      if (openId !== id) setOpen(false);
+    });
   }, [id]);
 
   return (
@@ -64,7 +76,7 @@ export default function ResourceReport({ kind, id }: Props) {
           const next = !open;
           setOpen(next);
           if (next) {
-            document.dispatchEvent(new CustomEvent("resource-report-open", { detail: id }));
+            emitReportOpen(id);
           }
         }}
         className="text-xs underline underline-offset-4 text-text/80 hover:text-heading"
