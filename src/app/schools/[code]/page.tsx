@@ -4,6 +4,7 @@ import AgentChat from "@/app/ccny/AgentChat";
 import ResourceCard, { type ResourceItem, type ResourceKind, type Scope } from "@/app/components/ResourceCard";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import Link from "next/link";
+import { Suspense } from "react";
 
 function toScope(schools: string[] | null | undefined): Scope {
   const arr = (schools ?? []).map((s) => s.toLowerCase());
@@ -195,7 +196,9 @@ export default async function SchoolHubPage({ params }: { params: Promise<{ code
             </div>
           )}
           <div className="mt-3">
-            <AgentChat schoolCode={schoolCode} />
+            <Suspense fallback={<div className="text-sm text-text/70">Loading chat…</div>}>
+              <AgentChat schoolCode={schoolCode} />
+            </Suspense>
           </div>
         </section>
 

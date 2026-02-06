@@ -2,6 +2,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import AgentChat from "./AgentChat";
 import IntakeWizard from "@/app/components/IntakeWizard";
+import { Suspense } from "react";
 
 export default function CCNYDemoPage() {
   return (
@@ -23,7 +24,9 @@ export default function CCNYDemoPage() {
         </p>
         <IntakeWizard variant="inline" initialSchoolCode="ccny" />
         <div className="mt-6">
-          <AgentChat schoolCode="ccny" />
+          <Suspense fallback={<div className="text-sm text-text/70">Loading chat…</div>}>
+            <AgentChat schoolCode="ccny" />
+          </Suspense>
         </div>
       </main>
       <Footer />
