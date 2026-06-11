@@ -18,6 +18,7 @@ const config: Config = {
         highlight: "rgb(var(--highlight) / <alpha-value>)",
         gold: "rgb(var(--gold) / <alpha-value>)",
         ringBrand: "rgb(var(--ring) / <alpha-value>)",
+        line: "rgb(var(--border) / <alpha-value>)",
       },
       boxShadow: {
         card: "0 8px 20px rgba(2, 6, 23, 0.06)",

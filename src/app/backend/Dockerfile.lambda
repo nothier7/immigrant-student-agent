@@ -1,0 +1,26 @@
+# Dockerfile.lambda — one container image for both scheduled jobs.
+# Container image (not a zip) because asyncpg/pydantic-core ship compiled
+# wheels that must match the Lambda runtime exactly.
+#
+# Build from src/app/backend:
+#   docker build -f Dockerfile.lambda -t dreamers-agent-jobs .
+#
+# The default CMD is the verifier; Terraform overrides it per function
+# via image_config.command (see infra/terraform/main.tf).
+
+# Stage 1: resolve locked dependencies into a requirements.txt with uv
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS deps
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project -o requirements.txt
+
+# Stage 2: AWS Lambda Python base image
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY --from=deps /app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt -t "${LAMBDA_TASK_ROOT}"
+
+# Application code (bank/, serving/, verifier/, discovery/, lambda_handler.py, ...)
+COPY . "${LAMBDA_TASK_ROOT}"
+
+CMD ["lambda_handler.verifier_handler"]

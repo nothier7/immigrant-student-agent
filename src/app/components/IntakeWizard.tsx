@@ -10,6 +10,11 @@ type Props = {
   variant?: "hero" | "inline";
   initialSchoolCode?: string;
   schools?: School[];
+  /** When set, always push answers as query params to this path (in-place apply)
+      instead of routing to /ccny, /schools/[code], or /resources. */
+  targetPath?: string;
+  /** Called after answers are applied (e.g. to collapse the panel). */
+  onApplied?: () => void;
 };
 
 const FALLBACK_SCHOOLS: School[] = [
@@ -38,7 +43,7 @@ const GOAL_OPTIONS = [
   { value: "other", label: "Other" },
 ] as const;
 
-export default function IntakeWizard({ variant = "hero", initialSchoolCode, schools }: Props) {
+export default function IntakeWizard({ variant = "hero", initialSchoolCode, schools, targetPath, onApplied }: Props) {
   const router = useRouter();
   const [school, setSchool] = useState<string>(initialSchoolCode || "ccny");
   const [status, setStatus] = useState<string>("undocumented");
@@ -84,6 +89,11 @@ export default function IntakeWizard({ variant = "hero", initialSchoolCode, scho
       instate: inState,
       goal,
     });
+    if (targetPath) {
+      router.push(`${targetPath}?${params.toString()}`, { scroll: false });
+      onApplied?.();
+      return;
+    }
     if (school === "all-cuny") {
       router.push(`/resources?school=all-cuny`);
       return;
