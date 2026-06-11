@@ -87,8 +87,9 @@ resource "aws_lambda_function" "job" {
   description   = each.value.description
   role          = aws_iam_role.jobs.arn
 
-  package_type = "Image"
-  image_uri    = local.image_uri
+  package_type  = "Image"
+  image_uri     = local.image_uri
+  architectures = ["x86_64"]
 
   image_config {
     command = [each.value.handler]
