@@ -18,6 +18,9 @@ export type UICard = {
   why?: string | null;
   deadline?: string | null;
   authority?: string | null;
+  tags?: string[];
+  verified?: boolean;
+  verified_at?: string | null;
 };
 type ChatResp = {
   session_id?: string;

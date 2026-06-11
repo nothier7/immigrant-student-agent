@@ -57,5 +57,13 @@ __pycache__/
 .firecrawl_cache/
 src/app/backend/.firecrawl_cache/
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
 # Misc
 *.tgz
