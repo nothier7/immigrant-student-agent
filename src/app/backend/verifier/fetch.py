@@ -8,6 +8,10 @@ from __future__ import annotations
 import httpx
 from bs4 import BeautifulSoup
 
+REQUEST_HEADERS = {
+    "user-agent": "Mozilla/5.0 (compatible; DreamersAgentVerifier/1.0; +https://dreamersagent.org)",
+}
+
 KEYWORDS = (
     "deadline", "due", "apply", "application", "eligib",
     "open", "close", "award", "semester", "cycle",
@@ -15,7 +19,7 @@ KEYWORDS = (
 
 
 async def fetch_text(url: str) -> str:
-    async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15, headers=REQUEST_HEADERS) as client:
         resp = await client.get(url)
     soup = BeautifulSoup(resp.text, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):

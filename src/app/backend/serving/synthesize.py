@@ -33,7 +33,7 @@ SYNTH_SYSTEM = (
 def _format_resources(resources: list[Resource]) -> str:
     return "\n".join(
         f"[{r.id}] {r.name} — {r.description or ''} "
-        f"(category: {r.category}; authority: {r.authority or 'n/a'}; "
+        f"(url: {r.url}; category: {r.category}; authority: {r.authority or 'n/a'}; "
         f"deadline: {r.deadline.isoformat() if r.deadline else 'unknown'}; "
         f"tags: {', '.join(r.tags)})"
         for r in resources

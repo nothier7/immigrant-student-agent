@@ -14,7 +14,7 @@ insert into public.resource_bank (name, description, url, category, authority, s
   (
     'CCNY In-State Tuition Guide',
     'How to qualify for in-state (resident) tuition at CUNY without citizenship: NYS high school for 2+ years with NY diploma/GED, or 12+ months NY domicile with proof. Requires an affidavit; applies to undocumented, DACA, TPS, and other non-citizen students.',
-    'https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-state-tuition',
+    'https://www.ccny.cuny.edu/immigrantstudentcenter/qualifying-for-in-state-tuition',
     'tuition', 'CCNY', 0,
     array['in-state-tuition', 'undocumented', 'daca']
   ),
@@ -49,7 +49,7 @@ insert into public.resource_bank (name, description, url, category, authority, s
   (
     'TheDream.US National Scholarship',
     'National scholarships for undocumented/DACA students. Offers National Scholarship (up to full tuition) and Opportunity Scholarship. Deadlines are seasonal (typically fall and spring).',
-    'https://www.thedream.us/',
+    'https://www.thedream.us/scholarships/national-scholarship/',
     'scholarship', 'TheDream.US', 1,
     array['scholarship', 'undocumented', 'daca', 'financial-aid']
   ),
