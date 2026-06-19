@@ -383,6 +383,11 @@ Three artifacts make this work:
 
 Deploy:
 
+For `database_url`, use Supabase's **Session Pooler** connection string from
+Dashboard -> Connect -> Session pooler. The direct `db.<project-ref>.supabase.co`
+connection can be IPv6-only on Supabase free projects, which Lambda cannot reach
+from the default public IPv4 runtime.
+
 ```bash
 cd infra/terraform
 cp terraform.tfvars.example terraform.tfvars   # fill in keys (gitignored)
@@ -392,9 +397,9 @@ terraform apply -target=aws_ecr_repository.jobs   # 1. create the registry
 # 2. build & push the image (from src/app/backend)
 aws ecr get-login-password --region us-east-1 | docker login --username AWS \
   --password-stdin "$(terraform output -raw ecr_repository_url | cut -d/ -f1)"
-docker build -f Dockerfile.lambda --platform linux/amd64 \
-  -t "$(cd ../../infra/terraform && terraform output -raw ecr_repository_url):latest" .
-docker push "$(cd ../../infra/terraform && terraform output -raw ecr_repository_url):latest"
+docker buildx build -f Dockerfile.lambda --platform linux/amd64 --provenance=false \
+  -t "$(cd ../../infra/terraform && terraform output -raw ecr_repository_url):latest" \
+  --push .
 
 # 3. everything else: lambdas, schedules, IAM
 terraform apply
