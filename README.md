@@ -271,30 +271,28 @@ Cheap deterministic red-flag scan first (`application fee`, `pay to apply`, `gua
 
 `embed` returns 1536 floats (`text-embedding-3-small`) — matches `vector(1536)`. Embeddings catch duplicates that exact name/URL matching misses (same scholarship, different wording). `find_similar` orders by cosine distance (`<=>`) and returns the nearest resource if it's within `threshold` (smaller distance = more similar). Storing the embedding on insert powers future dedup and serving's semantic retrieval.
 
-### Admission + human review
+### Admission + verification
 
-Web-discovered candidates are inserted as `pending_review` — never served directly. Admin endpoints (in `server.py`, authenticated via the `X-Admin-Key` header against `ADMIN_API_KEY`):
+Discovered candidates are never served directly. Trusted hubs and official domains (`.edu`, `.gov`, CUNY/CCNY, HESC, Immigrants Rising) enter as `unverified`, so the verifier can classify them automatically. Lower-trust search results enter as `pending_review`.
+
+Admin endpoints (in `server.py`, authenticated via the `X-Admin-Key` header against `ADMIN_API_KEY`):
 
 - `GET /admin/pending` — list the review queue
 - `POST /admin/approve/{id}` — flips `pending_review → unverified`, handing the resource to the verifier; it's checked before it can be served
 - `POST /admin/reject/{id}` — deletes the candidate
 
-Tiering: official-domain candidates could be inserted directly as `unverified` (auto-admit); web-discovered ones wait as `pending_review`.
-
 ### Pipeline + batch (`discovery/batch.py`)
 
-The function *is* the pipeline: fetch hub/search result → extract candidates → drop if known by URL → drop if vetting fails → embed and drop if semantic duplicate → otherwise admit to the review queue. `HUBS` is a fixed list of trusted aggregators. If `BRAVE_SEARCH_API_KEY` is set, daily discovery also rotates through capped search query templates and fetches the top results before sending them through the same review pipeline. Entrypoint mirrors the verifier's (`python -m discovery`), scheduled daily.
+The function *is* the pipeline: fetch hub/search result → extract candidates → drop if known by URL → drop if vetting fails → embed and drop if semantic duplicate → admit to verifier queue or review queue based on source trust. `HUBS` is a fixed list of trusted aggregators. If `BRAVE_SEARCH_API_KEY` is set, daily discovery also rotates through capped search query templates and fetches the top results before sending them through the same pipeline. Entrypoint mirrors the verifier's (`python -m discovery`), scheduled daily.
 
 ## 9. The closed loop
 
 Discovery feeds in, the verifier maintains, serving reads out:
 
 ```
-trusted hubs + search ──discovery──▶ pending_review ──human approve──▶ unverified
-                                                                            │
-                                                                    verifier (daily)
-                                                                            ▼
-                       students ◀──serving (/chat)── valid only    stale/unverifiable (hidden)
+trusted hubs / official domains ──discovery──▶ unverified ──verifier──▶ valid ──serving──▶ students
+                                          │                         └── stale/unverifiable (hidden)
+lower-trust search results ───────────────└──▶ pending_review ──human approve──▶ unverified
 ```
 
 Each layer reused the one before it — that reuse is the sign the architecture is coherent.
@@ -418,7 +416,7 @@ aws lambda invoke --function-name dreamers-agent-verifier /dev/stdout
 
 To ship a new version of the jobs: rebuild, push with a new tag, `terraform apply -var image_tag=<tag>`.
 
-Discovery uses two sources. Trusted hubs are always fetched. If `BRAVE_SEARCH_API_KEY` is set, the daily job also rotates through search query templates, fetches top results, extracts candidates, dedupes by URL and embedding, and inserts only vetted discoveries into `resource_bank` as `pending_review`.
+Discovery uses two sources. Trusted hubs are always fetched. If `BRAVE_SEARCH_API_KEY` is set, the daily job also rotates through search query templates, fetches top results, extracts candidates, dedupes by URL and embedding, and inserts vetted discoveries into `resource_bank`. Trusted/official sources enter as `unverified`; lower-trust sources enter as `pending_review`.
 
 ## 15. Guardrails
 

@@ -1,6 +1,6 @@
 from datetime import date
 
-from discovery.batch import _normalize_candidate, _tags_from_search_result, search_queries_for_run
+from discovery.batch import _admission_status, _is_trusted_url, _normalize_candidate, _tags_from_search_result, search_queries_for_run
 from discovery.schema import Candidate
 from discovery.search import SearchResult
 
@@ -36,3 +36,14 @@ def test_normalize_candidate_resolves_relative_url_and_filters_tags():
     assert normalized is not None
     assert normalized.url == "https://example.edu/apply"
     assert normalized.tags == ["financial-aid"]
+
+
+def test_official_domains_enter_verifier_queue():
+    assert _is_trusted_url("https://www.ccny.cuny.edu/immigrantstudentcenter/scholarships")
+    assert _is_trusted_url("https://example.edu/scholarship")
+    assert _is_trusted_url("https://hesc.ny.gov/applying-aid/nys-dream-act/")
+    assert not _is_trusted_url("https://example.com/scholarship")
+
+    assert _admission_status("https://example.edu/scholarship", source="search:test") == "unverified"
+    assert _admission_status("https://example.com/scholarship", source="search:test") == "pending_review"
+    assert _admission_status("https://example.com/scholarship", source="hub:https://hub.test") == "unverified"

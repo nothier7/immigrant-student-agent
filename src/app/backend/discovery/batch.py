@@ -1,7 +1,7 @@
 # discovery/batch.py -- the function IS the pipeline:
 # trusted hub or search result -> fetch/extract -> drop if known by URL ->
 # drop if vetting fails -> embed and drop if semantic duplicate -> otherwise
-# admit to the review queue.
+# admit to the verifier or review queue.
 
 from __future__ import annotations
 
@@ -41,6 +41,14 @@ SEARCH_QUERY_TEMPLATES = [
 ]
 
 ALLOWED_TAGS = set(TAGS)
+TRUSTED_DOMAIN_SUFFIXES = (
+    ".edu",
+    ".gov",
+    "cuny.edu",
+    "ccny.cuny.edu",
+    "hesc.ny.gov",
+    "immigrantsrising.org",
+)
 
 
 def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -72,6 +80,18 @@ def _search_result_concurrency() -> int:
 def _valid_url(url: str) -> bool:
     parsed = urlparse(url)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _is_trusted_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    host = host[4:] if host.startswith("www.") else host
+    return any(host == suffix or host.endswith(suffix) for suffix in TRUSTED_DOMAIN_SUFFIXES)
+
+
+def _admission_status(url: str, *, source: str) -> str:
+    if source.startswith("hub:") or _is_trusted_url(url):
+        return "unverified"
+    return "pending_review"
 
 
 def _normalize_candidate(candidate: Candidate, *, base_url: str | None = None) -> Candidate | None:
@@ -115,8 +135,10 @@ async def _queue_candidate(candidate: Candidate, *, source: str, base_url: str |
     if await repository.find_similar(emb):
         print(f"[discovery] duplicate {normalized.name}")
         return False
-    await repository.insert_candidate(normalized, emb)
-    print(f"[discovery] queued {normalized.name} for review from {source}")
+    status = _admission_status(normalized.url, source=source)
+    await repository.insert_candidate(normalized, emb, status=status)
+    destination = "verifier" if status == "unverified" else "review"
+    print(f"[discovery] queued {normalized.name} for {destination} from {source}")
     return True
 
 

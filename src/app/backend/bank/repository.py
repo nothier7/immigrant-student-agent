@@ -158,18 +158,25 @@ async def find_similar(embedding: list[float], threshold: float = 0.15) -> Resou
     return None
 
 
-async def insert_candidate(candidate, embedding: list[float], tier: int = 2) -> None:
-    """Web-discovered candidates land as pending_review (human gate);
-    they only become servable after approve() + a verifier pass."""
+async def insert_candidate(
+    candidate,
+    embedding: list[float],
+    tier: int = 2,
+    status: str = "pending_review",
+) -> None:
+    """Discovered candidates land in review or verifier queue.
+
+    They only become servable after the verifier marks them valid.
+    """
     sql = """
         insert into resource_bank (name, description, url, tags, source_tier, status, embedding, added_by)
-        values ($1, $2, $3, $4, $5, 'pending_review', $6, 'discovery')
+        values ($1, $2, $3, $4, $5, $6, $7, 'discovery')
         on conflict (url) do nothing
     """
     async with _pool.acquire() as conn:
         await conn.execute(
             sql, candidate.name, candidate.description, candidate.url,
-            candidate.tags, tier, embedding,
+            candidate.tags, tier, status, embedding,
         )
 
 
