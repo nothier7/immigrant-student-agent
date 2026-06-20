@@ -28,6 +28,13 @@ variable "database_url" {
   sensitive   = true
 }
 
+variable "brave_search_api_key" {
+  description = "Optional Brave Search API key for broad web discovery"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "verifier_schedule" {
   description = "EventBridge schedule for the verifier (plan: daily)"
   type        = string
@@ -35,7 +42,7 @@ variable "verifier_schedule" {
 }
 
 variable "discovery_schedule" {
-  description = "EventBridge schedule for discovery (plan: weekly)"
+  description = "EventBridge schedule for discovery (plan: daily)"
   type        = string
-  default     = "rate(7 days)"
+  default     = "rate(1 day)"
 }

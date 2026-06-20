@@ -38,9 +38,9 @@ The backend is four cooperating layers around one Postgres table:
    reads ↑                  maintains ↑              feeds in ↑
 ┌────────────────┐   ┌────────────────────┐   ┌────────────────────┐
 │  Serving (L2)  │   │   Verifier (L3)    │   │   Discovery (L4)   │
-│ /chat answers  │   │ daily job: prunes  │   │ weekly job: grows  │
+│ /chat answers  │   │ daily job: prunes  │   │ daily job: grows   │
 │ grounded cards │   │ dead/expired links │   │ bank from trusted  │
-│                │   │                    │   │ hubs + human gate  │
+│                │   │                    │   │ hubs/search + gate │
 └────────────────┘   └────────────────────┘   └────────────────────┘
 ```
 
@@ -113,7 +113,8 @@ src/app/backend/
     extract.py         # extract_candidates
     vet.py             # vet
     embed.py           # embed
-    batch.py           # discover_from_hub, run_discovery
+    search.py          # Brave Search API client
+    batch.py           # discover_from_hub/search, run_discovery
     __main__.py        # entrypoint: python -m discovery
   tests/
     test_decide.py     # deterministic verifier-core tests
@@ -252,7 +253,7 @@ Run with `python -m verifier` (from `src/app/backend`); a scheduler triggers it 
 
 ## 8. Layer 4 — Discovery
 
-**Goal:** grow the bank from trusted hubs through a vetting + dedup gate, with a human review checkpoint. Mirrors the verifier: reuses fetch, structured output, batch/concurrency, repository. New concept: embeddings.
+**Goal:** grow the bank from trusted hubs and capped web search through a vetting + dedup gate, with a human review checkpoint. Mirrors the verifier: reuses fetch, structured output, batch/concurrency, repository. New concept: embeddings.
 
 ### Schemas (`discovery/schema.py`)
 
@@ -260,7 +261,7 @@ Run with `python -m verifier` (from `src/app/backend`); a scheduler triggers it 
 
 ### Extract candidates from a hub (`discovery/extract.py`)
 
-Structured extraction over a trusted aggregator page: name, link, one-line description, tags from the fixed `TAGS` list. "Only list opportunities actually present on the page."
+Structured extraction over a trusted aggregator page or fetched search result page: name, link, one-line description, tags from the fixed `TAGS` list. "Only list opportunities actually present on the page."
 
 ### Vetting gate (`discovery/vet.py`)
 
@@ -282,18 +283,18 @@ Tiering: official-domain candidates could be inserted directly as `unverified` (
 
 ### Pipeline + batch (`discovery/batch.py`)
 
-The function *is* the pipeline: fetch hub → extract → drop if known by URL → drop if vetting fails → embed and drop if semantic duplicate → otherwise admit to the review queue. `HUBS` is a fixed list of trusted aggregators — discovery never crawls the open web. Entrypoint mirrors the verifier's (`python -m discovery`), scheduled weekly.
+The function *is* the pipeline: fetch hub/search result → extract candidates → drop if known by URL → drop if vetting fails → embed and drop if semantic duplicate → otherwise admit to the review queue. `HUBS` is a fixed list of trusted aggregators. If `BRAVE_SEARCH_API_KEY` is set, daily discovery also rotates through capped search query templates and fetches the top results before sending them through the same review pipeline. Entrypoint mirrors the verifier's (`python -m discovery`), scheduled daily.
 
 ## 9. The closed loop
 
 Discovery feeds in, the verifier maintains, serving reads out:
 
 ```
-trusted hubs ──discovery──▶ pending_review ──human approve──▶ unverified
-                                                                  │
-                                                          verifier (daily)
-                                                                  ▼
-            students ◀──serving (/chat)──  valid / unverified   stale (hidden)
+trusted hubs + search ──discovery──▶ pending_review ──human approve──▶ unverified
+                                                                            │
+                                                                    verifier (daily)
+                                                                            ▼
+                       students ◀──serving (/chat)── valid only    stale/unverifiable (hidden)
 ```
 
 Each layer reused the one before it — that reuse is the sign the architecture is coherent.
@@ -324,7 +325,7 @@ Background jobs (run from `src/app/backend`):
 
 ```bash
 uv run python -m verifier    # daily — verify due resources
-uv run python -m discovery   # weekly — discover candidates from hubs
+uv run python -m discovery   # daily — discover candidates from hubs/search
 ```
 
 ## 11. Environment variables
@@ -340,6 +341,10 @@ Backend (`src/app/backend/.env`):
 - `OPENAI_API_KEY` — **required** for LLM responses and embeddings
 - `DATABASE_URL` — Postgres connection string (Supabase: Settings → Database). **Optional:** without it, `/chat` falls back to the legacy static-context agent
 - `ADMIN_API_KEY` — shared secret for the `/admin/*` review endpoints (admin endpoints are disabled if unset)
+- `BRAVE_SEARCH_API_KEY` — optional, enables broad web search discovery in addition to trusted hub discovery
+- `DISCOVERY_SEARCH_QUERIES_PER_RUN` — optional, defaults to `10`
+- `DISCOVERY_SEARCH_RESULTS_PER_QUERY` — optional, defaults to `5`
+- `DISCOVERY_SEARCH_RESULT_CONCURRENCY` — optional, defaults to `5`
 
 ## 12. API reference
 
@@ -369,7 +374,7 @@ uv run pytest tests/ -q
 
 - **Web**: Vercel (set `PY_BACKEND_URL`).
 - **API**: any FastAPI host (Render/Fly/Docker). Start: `uv run uvicorn server:app --host 0.0.0.0 --port 8001`. Set `OPENAI_API_KEY`, `DATABASE_URL`, `ADMIN_API_KEY`.
-- **Jobs**: AWS Lambda triggered by EventBridge — verifier daily, discovery weekly. Everything below is in the repo.
+- **Jobs**: AWS Lambda triggered by EventBridge — verifier daily, discovery daily. Everything below is in the repo.
 
 ### Jobs on AWS Lambda + EventBridge
 
@@ -379,7 +384,7 @@ Three artifacts make this work:
 |---|---|
 | `src/app/backend/lambda_handler.py` | `verifier_handler` / `discovery_handler` — sync Lambda entrypoints that wrap the async jobs in `asyncio.run`, opening and closing the DB pool per invocation (Lambda freezes environments between runs, so connections can't be assumed alive) |
 | `src/app/backend/Dockerfile.lambda` | One container image for both jobs, built on `public.ecr.aws/lambda/python:3.12`. A container image (not a zip) because `asyncpg`/`pydantic-core` ship compiled wheels that must match the Lambda runtime. Stage 1 exports the locked deps with `uv`; stage 2 installs them into the Lambda task root |
-| `infra/terraform/` | ECR repo, IAM role (CloudWatch Logs only — Postgres/OpenAI are outside AWS), two Lambda functions from the *same image* with the handler overridden per function via `image_config.command`, two EventBridge schedule rules (`rate(1 day)` / `rate(7 days)`), log groups with 30-day retention |
+| `infra/terraform/` | ECR repo, IAM role (CloudWatch Logs only — Postgres/OpenAI/search are outside AWS), two Lambda functions from the *same image* with the handler overridden per function via `image_config.command`, two EventBridge schedule rules (`rate(1 day)` / `rate(1 day)`), log groups with 30-day retention |
 
 Deploy:
 
@@ -412,6 +417,8 @@ aws lambda invoke --function-name dreamers-agent-verifier /dev/stdout
 ```
 
 To ship a new version of the jobs: rebuild, push with a new tag, `terraform apply -var image_tag=<tag>`.
+
+Discovery uses two sources. Trusted hubs are always fetched. If `BRAVE_SEARCH_API_KEY` is set, the daily job also rotates through search query templates, fetches top results, extracts candidates, dedupes by URL and embedding, and inserts only vetted discoveries into `resource_bank` as `pending_review`.
 
 ## 15. Guardrails
 

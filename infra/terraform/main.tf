@@ -3,7 +3,7 @@
 # One container image, two Lambda functions (the handler is overridden per
 # function via image_config.command), two EventBridge schedule rules:
 #   verifier  — daily  — prunes dead/expired resources (bank self-cleans)
-#   discovery — weekly — grows the bank from trusted hubs into the review queue
+#   discovery — daily  — grows the bank from trusted hubs/search into review
 #
 # Workflow:
 #   1. terraform apply -target=aws_ecr_repository.jobs   (create the repo)
@@ -48,7 +48,7 @@ locals {
     discovery = {
       handler     = "lambda_handler.discovery_handler"
       schedule    = var.discovery_schedule
-      description = "Weekly discovery from trusted hubs into the review queue"
+      description = "Daily discovery from trusted hubs and search into the review queue"
     }
   }
 }
@@ -100,8 +100,9 @@ resource "aws_lambda_function" "job" {
 
   environment {
     variables = {
-      OPENAI_API_KEY = var.openai_api_key
-      DATABASE_URL   = var.database_url
+      OPENAI_API_KEY       = var.openai_api_key
+      DATABASE_URL         = var.database_url
+      BRAVE_SEARCH_API_KEY = var.brave_search_api_key
     }
   }
 }

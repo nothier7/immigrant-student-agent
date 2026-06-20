@@ -1,5 +1,5 @@
 # discovery/__main__.py — entrypoint mirroring the verifier's.
-# Run with `python -m discovery` from src/app/backend; scheduled weekly.
+# Run with `python -m discovery` from src/app/backend; scheduled daily.
 
 import asyncio
 import os

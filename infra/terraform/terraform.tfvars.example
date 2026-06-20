@@ -2,6 +2,7 @@
 aws_region     = "us-east-1"
 image_tag      = "latest"
 openai_api_key = "sk-..."
+brave_search_api_key = "BSA..."
 # For AWS Lambda, prefer Supabase's IPv4 Session Pooler URL from
 # Supabase Dashboard -> Connect -> Session pooler.
 database_url = "postgresql://postgres.<project-ref>:<password>@aws-<region>.pooler.supabase.com:5432/postgres"

@@ -3,7 +3,7 @@
 # Both functions are built from the same container image (Dockerfile.lambda);
 # Terraform points each Lambda at a different handler via image_config.command:
 #   verifier  -> lambda_handler.verifier_handler   (EventBridge: rate(1 day))
-#   discovery -> lambda_handler.discovery_handler  (EventBridge: rate(7 days))
+#   discovery -> lambda_handler.discovery_handler  (EventBridge: rate(1 day))
 #
 # Lambda invokes a sync handler, so each one spins up its own event loop with
 # asyncio.run — same lifecycle as the local `python -m verifier` entrypoint.
