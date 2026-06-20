@@ -58,6 +58,19 @@ def _to_resource(row: asyncpg.Record) -> Resource:
     return Resource(**dict(row))
 
 
+def _strip_nul(value):
+    """Postgres text/jsonb cannot store U+0000; fetched web text sometimes can."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, list):
+        return [_strip_nul(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_strip_nul(item) for item in value)
+    if isinstance(value, dict):
+        return {_strip_nul(key): _strip_nul(item) for key, item in value.items()}
+    return value
+
+
 # ---------- Serving (Layer 2) ----------
 
 async def get_active_resources(
@@ -106,7 +119,13 @@ async def set_status(
     """
     async with _pool.acquire() as conn:
         await conn.execute(
-            sql, resource_id, status, verification, last_verified_at, deadline, deadline_type
+            sql,
+            resource_id,
+            status,
+            _strip_nul(verification),
+            last_verified_at,
+            deadline,
+            deadline_type,
         )
 
 
@@ -175,8 +194,14 @@ async def insert_candidate(
     """
     async with _pool.acquire() as conn:
         await conn.execute(
-            sql, candidate.name, candidate.description, candidate.url,
-            candidate.tags, tier, status, embedding,
+            sql,
+            _strip_nul(candidate.name),
+            _strip_nul(candidate.description),
+            _strip_nul(candidate.url),
+            _strip_nul(candidate.tags),
+            tier,
+            status,
+            embedding,
         )
 
 
