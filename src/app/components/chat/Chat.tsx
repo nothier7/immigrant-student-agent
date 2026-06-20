@@ -370,7 +370,7 @@ export default function Chat() {
       </div>
 
       {/* floating composer */}
-      <div className="fixed inset-x-0 bottom-6">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg pb-6 pt-3">
         <form
           className="relative mx-auto max-w-2xl px-4"
           onSubmit={(e) => {
