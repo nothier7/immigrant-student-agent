@@ -248,7 +248,7 @@ export default function Chat() {
 
   return (
     <div className="flex w-full flex-1 flex-col">
-      <div className="mx-auto w-full max-w-2xl flex-1 px-4 pb-40 pt-10">
+      <div className="mx-auto w-full max-w-2xl flex-1 px-4 pb-56 pt-10">
         <div className="space-y-5">
           {messages.map((m, i) =>
             m.role === "user" ? (
@@ -366,11 +366,11 @@ export default function Chat() {
             ) : null}
           </AnimatePresence>
         </div>
-        <div ref={endRef} />
+        <div ref={endRef} className="h-24 scroll-mb-56" />
       </div>
 
       {/* floating composer */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg pb-6 pt-3">
+      <div className="fixed inset-x-0 bottom-0 z-20 pb-6 pt-3 shadow-[0_-18px_36px_rgb(var(--bg))]" style={{ backgroundColor: "rgb(var(--bg))" }}>
         <form
           className="relative mx-auto max-w-2xl px-4"
           onSubmit={(e) => {
@@ -378,11 +378,24 @@ export default function Chat() {
             ask(input);
           }}
         >
-          <input
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                ask(input);
+              }
+            }}
             placeholder="Ask a follow-up…"
-            className="w-full rounded-full border border-line bg-card py-3 pl-5 pr-14 text-[15px] text-heading shadow-card placeholder:text-text/50"
+            rows={1}
+            className="max-h-40 min-h-[48px] w-full resize-none rounded-3xl border border-line py-3 pl-5 pr-14 text-[15px] leading-6 text-heading shadow-card placeholder:text-text/50"
+            style={{ backgroundColor: "rgb(var(--card))" }}
           />
           <button
             type="submit"

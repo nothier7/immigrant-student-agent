@@ -572,14 +572,14 @@ export default function AgentChat({ schoolCode }: { schoolCode?: string }) {
               }
             }}
             placeholder="Ask about in-state tuition, NYSDA/TAP, scholarships, grants…"
-            className="max-h-40 min-h-[38px] flex-1 resize-none rounded-xl border border-[color:rgb(var(--glass-border)/0.18)] bg-[color:rgb(var(--card)/0.9)] px-3 py-2 text-sm text-text placeholder:text-text/60"
+            className="max-h-40 min-h-[38px] flex-1 resize-none rounded-xl border border-[color:rgb(var(--glass-border)/0.18)] bg-[rgb(var(--card))] px-3 py-2 text-sm text-text placeholder:text-text/60"
             disabled={loading}
             aria-label="Chat message"
           />
           <button
             type="submit"
             disabled={loading}
-            className="rounded-xl border border-[color:rgb(var(--glass-border)/0.18)] px-3 py-2 text-sm text-heading/90 hover:bg-bg/60 disabled:opacity-60"
+            className="rounded-xl border border-[color:rgb(var(--glass-border)/0.18)] bg-[rgb(var(--card))] px-3 py-2 text-sm text-heading/90 hover:bg-bg/60 disabled:opacity-60"
           >
             {loading ? "…" : "Send"}
           </button>
