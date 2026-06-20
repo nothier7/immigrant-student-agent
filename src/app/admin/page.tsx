@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 
-type Source = "resource_bank" | "resources" | "scholarships" | "mentorships";
+type Source = "resource_bank";
 type HealthStatus =
   | "pending"
   | "verified"
@@ -30,7 +30,7 @@ type HealthStatus =
 type AdminResourceRow = {
   id: string;
   source: Source;
-  kind: "ai-bank" | "resource" | "scholarship" | "mentorship";
+  kind: "ai-bank";
   name: string;
   url: string | null;
   description: string | null;
@@ -56,7 +56,6 @@ type AdminSummary = {
   manualReview: number;
   staleOrBroken: number;
   verified: number;
-  pendingDirectory: number;
   lastRun: string | null;
 };
 
@@ -69,14 +68,7 @@ type ApiResponse = {
   error?: string;
 };
 
-type TabId =
-  | "overview"
-  | "ai-bank"
-  | "discovery"
-  | "verification"
-  | "directory"
-  | "manual-review"
-  | "logs";
+type TabId = "overview" | "ai-bank" | "discovery" | "verification" | "manual-review" | "logs";
 
 const KEY_STORAGE = "admin_key";
 
@@ -85,16 +77,12 @@ const TABS: { id: TabId; label: string; tone?: "violet" | "green" | "amber" }[] 
   { id: "ai-bank", label: "AI Bank" },
   { id: "discovery", label: "Discovery Runs", tone: "violet" },
   { id: "verification", label: "Verification", tone: "green" },
-  { id: "directory", label: "Directory Links" },
   { id: "manual-review", label: "Manual Review", tone: "amber" },
   { id: "logs", label: "Logs" },
 ];
 
 const SOURCE_LABELS: Record<Source, string> = {
   resource_bank: "AI bank",
-  resources: "Resources",
-  scholarships: "Scholarships",
-  mentorships: "Mentorships",
 };
 
 const STATUS_OPTIONS = [
@@ -105,8 +93,6 @@ const STATUS_OPTIONS = [
   { value: "stale", label: "Stale" },
   { value: "broken", label: "Broken" },
   { value: "unverifiable", label: "Unverifiable" },
-  { value: "active", label: "Public active" },
-  { value: "archived", label: "Public archived" },
 ];
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -141,14 +127,12 @@ function matchesTab(row: AdminResourceRow, tab: TabId) {
       row.healthStatus === "stale" ||
       row.healthStatus === "broken" ||
       row.healthStatus === "unverifiable" ||
-      (row.source !== "resource_bank" && row.healthStatus === "pending") ||
       !row.url
     );
   }
   if (tab === "ai-bank") return row.source === "resource_bank";
   if (tab === "discovery") return row.source === "resource_bank" && row.addedBy === "discovery";
   if (tab === "verification") return row.source === "resource_bank" && Boolean(row.lastCheckedAt);
-  if (tab === "directory") return row.source !== "resource_bank";
   if (tab === "manual-review") {
     return row.status === "pending_review" || row.healthStatus === "broken" || row.healthStatus === "unverifiable" || !row.url;
   }
@@ -171,7 +155,7 @@ function healthLabel(row: AdminResourceRow) {
   if (row.healthStatus === "restricted") return "restricted";
   if (row.healthStatus === "unverifiable") return "unverifiable";
   if (row.status === "pending_review") return "review";
-  if (row.healthStatus === "pending") return row.source === "resource_bank" ? row.status : "pending";
+  if (row.healthStatus === "pending") return row.status;
   return row.status;
 }
 
@@ -188,14 +172,12 @@ function sourceTone(row: AdminResourceRow) {
   if (row.source === "resource_bank" && row.addedBy === "discovery") {
     return "border-[#a996e8] bg-[#f3efff] text-[#5f42b2]";
   }
-  if (row.source === "resource_bank") return "border-[#c8c8c3] bg-white text-[#1f2328]";
-  return "border-[#dededb] bg-[#fbfbfa] text-[#50565f]";
+  return "border-[#c8c8c3] bg-white text-[#1f2328]";
 }
 
 function filterRows(
   rows: AdminResourceRow[],
   tab: TabId,
-  source: Source | "all",
   status: string,
   dateWindow: string,
   query: string
@@ -203,7 +185,6 @@ function filterRows(
   const needle = query.trim().toLowerCase();
   return rows.filter((row) => {
     if (!matchesTab(row, tab)) return false;
-    if (source !== "all" && row.source !== source) return false;
     if (status !== "all" && row.status !== status && row.healthStatus !== status) return false;
     if (!withinDateWindow(row, dateWindow)) return false;
     if (needle) {
@@ -220,7 +201,6 @@ export default function AdminPage() {
   const [rows, setRows] = useState<AdminResourceRow[]>([]);
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const [source, setSource] = useState<Source | "all">("all");
   const [status, setStatus] = useState("all");
   const [dateWindow, setDateWindow] = useState("30");
   const [query, setQuery] = useState("");
@@ -271,8 +251,8 @@ export default function AdminPage() {
   }, [adminKey, load, unlocked]);
 
   const visibleRows = useMemo(
-    () => filterRows(rows, activeTab, source, status, dateWindow, query),
-    [activeTab, dateWindow, query, rows, source, status]
+    () => filterRows(rows, activeTab, status, dateWindow, query),
+    [activeTab, dateWindow, query, rows, status]
   );
 
   const runAction = useCallback(
@@ -309,7 +289,6 @@ export default function AdminPage() {
     manualReview: rows.filter((row) => row.status === "pending_review").length,
     staleOrBroken: rows.filter((row) => row.healthStatus === "stale" || row.healthStatus === "broken").length,
     verified: rows.filter((row) => row.healthStatus === "verified").length,
-    pendingDirectory: rows.filter((row) => row.source !== "resource_bank" && row.healthStatus === "pending").length,
     lastRun: rows.map((row) => row.lastCheckedAt).filter(Boolean).sort().at(-1) ?? null,
   };
 
@@ -321,7 +300,7 @@ export default function AdminPage() {
             <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#69707a]">Admin</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Resource Operations</h1>
             <p className="mt-2 text-sm leading-6 text-[#69707a]">
-              Unlock the unified console for AI bank resources, discovery, verification, and directory link checks.
+              Unlock the unified console for AI bank resources, discovery, verification, and manual review.
             </p>
           </div>
           <form
@@ -384,7 +363,7 @@ export default function AdminPage() {
           <div>
             <h1 className="text-[28px] font-[760] leading-tight tracking-tight">Resource Operations</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[#69707a]">
-              One control room for discovery, verification, public directory links, and manual review.
+              One control room for the canonical resource bank, discovery, verification, and manual review.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -468,19 +447,6 @@ export default function AdminPage() {
               />
             </div>
 
-            <label className="mb-1 block text-xs font-bold text-[#50565f]">Source</label>
-            <select
-              value={source}
-              onChange={(event) => setSource(event.target.value as Source | "all")}
-              className="mb-3 h-9 w-full rounded-[7px] border border-[#c8c8c3] bg-[#fbfbfa] px-2 text-sm outline-none focus:border-[#1f2328]"
-            >
-              <option value="all">All sources</option>
-              <option value="resource_bank">AI resource bank</option>
-              <option value="resources">Public resources</option>
-              <option value="scholarships">Scholarships</option>
-              <option value="mentorships">Mentorships</option>
-            </select>
-
             <label className="mb-1 block text-xs font-bold text-[#50565f]">Status</label>
             <select
               value={status}
@@ -515,11 +481,6 @@ export default function AdminPage() {
                   Showing {visibleRows.length} of {rows.length} loaded resources.
                 </p>
               </div>
-              {activeTab === "directory" ? (
-                <span className="rounded-full border border-[#c8c8c3] bg-[#f0f1ef] px-2.5 py-1 text-xs font-bold text-[#50565f]">
-                  {metrics.pendingDirectory} unchecked public links
-                </span>
-              ) : null}
             </div>
 
             <div className="overflow-x-auto">
@@ -647,7 +608,7 @@ function RowActions({
         </a>
       ) : null}
 
-      {row.source === "resource_bank" && row.status === "pending_review" ? (
+      {row.status === "pending_review" ? (
         <>
           <button type="button" className={buttonClass} disabled={isBusy} onClick={() => onAction(row, "approve")}>
             <Check className="h-3 w-3" />
@@ -660,29 +621,13 @@ function RowActions({
         </>
       ) : null}
 
-      {row.source === "resource_bank" && row.status !== "pending_review" ? (
+      {row.status !== "pending_review" ? (
         <>
           <button type="button" className={buttonClass} disabled={isBusy} onClick={() => onAction(row, "request-recheck")}>
             Recheck
           </button>
           <button type="button" className={buttonClass} disabled={isBusy} onClick={() => onAction(row, "mark-valid")}>
             Mark valid
-          </button>
-        </>
-      ) : null}
-
-      {row.source !== "resource_bank" ? (
-        <>
-          <button type="button" className={buttonClass} disabled={isBusy || !row.url} onClick={() => onAction(row, "check-link")}>
-            Check
-          </button>
-          <button
-            type="button"
-            className={buttonClass}
-            disabled={isBusy}
-            onClick={() => onAction(row, row.status === "archived" ? "activate" : "archive")}
-          >
-            {row.status === "archived" ? "Activate" : "Archive"}
           </button>
         </>
       ) : null}

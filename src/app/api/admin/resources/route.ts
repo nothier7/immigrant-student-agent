@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
 import { asStringArray, getAdminAuthError, isoDateKey, textIncludes } from "../_utils";
 
-type Source = "resource_bank" | "resources" | "scholarships" | "mentorships";
+type Source = "resource_bank";
 type HealthStatus =
   | "pending"
   | "verified"
@@ -18,7 +18,7 @@ type HealthStatus =
 type AdminResourceRow = {
   id: string;
   source: Source;
-  kind: "ai-bank" | "resource" | "scholarship" | "mentorship";
+  kind: "ai-bank";
   name: string;
   url: string | null;
   description: string | null;
@@ -40,30 +40,6 @@ type AdminResourceRow = {
 
 type RawRow = Record<string, unknown>;
 
-const DIRECTORY_TABLES = [
-  { source: "resources" as const, kind: "resource" as const },
-  { source: "scholarships" as const, kind: "scholarship" as const },
-  { source: "mentorships" as const, kind: "mentorship" as const },
-];
-
-const DIRECTORY_SELECTS: Record<(typeof DIRECTORY_TABLES)[number]["source"], { full: string; fallback: string }> = {
-  resources: {
-    full:
-      "id,name,url,description,authority,status,created_at,updated_at,submitted_by,eligibility_tags,link_status,link_checked_at,link_fail_count,link_http_status",
-    fallback: "id,name,url,description,authority,status,created_at,updated_at,submitted_by,eligibility_tags",
-  },
-  scholarships: {
-    full:
-      "id,name,url,description,authority,status,created_at,updated_at,submitted_by,eligibility_tags,link_status,link_checked_at,link_fail_count,link_http_status",
-    fallback: "id,name,url,description,authority,status,created_at,updated_at,submitted_by,eligibility_tags",
-  },
-  mentorships: {
-    full:
-      "id,name,url,description,authority,status,created_at,updated_at,submitted_by,link_status,link_checked_at,link_fail_count,link_http_status",
-    fallback: "id,name,url,description,authority,status,created_at,updated_at,submitted_by",
-  },
-};
-
 function verificationReason(value: unknown) {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -81,14 +57,6 @@ function bankHealth(status: string): HealthStatus {
   if (status === "stale") return "stale";
   if (status === "unverifiable") return "unverifiable";
   if (status === "pending_review" || status === "unverified") return "pending";
-  return "unknown";
-}
-
-function directoryHealth(linkStatus: string | null, checkedAt: string | null): HealthStatus {
-  if (!checkedAt || !linkStatus || linkStatus === "unknown") return "pending";
-  if (linkStatus === "ok" || linkStatus === "redirect") return "verified";
-  if (linkStatus === "restricted") return "restricted";
-  if (linkStatus === "broken" || linkStatus === "timeout") return "broken";
   return "unknown";
 }
 
@@ -124,46 +92,10 @@ function normalizeBank(row: RawRow): AdminResourceRow {
   };
 }
 
-function normalizeDirectory(
-  row: RawRow,
-  source: "resources" | "scholarships" | "mentorships",
-  kind: "resource" | "scholarship" | "mentorship"
-): AdminResourceRow {
-  const status = String(row.status ?? "unknown");
-  const linkStatus = typeof row.link_status === "string" ? row.link_status : "unknown";
-  const checkedAt = (row.link_checked_at as string | null) ?? null;
-  const createdAt = String(row.created_at ?? new Date().toISOString());
-  const tags = source === "mentorships" ? [] : asStringArray(row.eligibility_tags);
-
-  return {
-    id: String(row.id),
-    source,
-    kind,
-    name: String(row.name ?? "Untitled resource"),
-    url: typeof row.url === "string" ? row.url : null,
-    description: typeof row.description === "string" ? row.description : null,
-    authority: typeof row.authority === "string" ? row.authority : null,
-    status,
-    healthStatus: directoryHealth(linkStatus, checkedAt),
-    addedBy: row.submitted_by ? "community" : "admin",
-    runKey: checkedAt ? `link-${isoDateKey(checkedAt)}` : null,
-    lastCheckedAt: checkedAt,
-    createdAt,
-    updatedAt: (row.updated_at as string | null) ?? null,
-    reason: linkStatus === "unknown" ? "Link has not been checked yet." : null,
-    tags,
-    sourceTier: null,
-    linkStatus,
-    linkFailCount: typeof row.link_fail_count === "number" ? row.link_fail_count : 0,
-    linkHttpStatus: typeof row.link_http_status === "number" ? row.link_http_status : null,
-  };
-}
-
 function matchesTab(row: AdminResourceRow, tab: string) {
   if (tab === "ai-bank") return row.source === "resource_bank";
   if (tab === "discovery") return row.source === "resource_bank" && row.addedBy === "discovery";
-  if (tab === "verification") return row.source === "resource_bank" && row.lastCheckedAt;
-  if (tab === "directory") return row.source !== "resource_bank";
+  if (tab === "verification") return row.source === "resource_bank" && Boolean(row.lastCheckedAt);
   if (tab === "manual-review") {
     return (
       row.status === "pending_review" ||
@@ -216,7 +148,6 @@ function buildSummary(rows: AdminResourceRow[]) {
   const review = rows.filter((row) => row.status === "pending_review").length;
   const stale = rows.filter((row) => row.healthStatus === "stale" || row.healthStatus === "broken").length;
   const verified = rows.filter((row) => row.healthStatus === "verified").length;
-  const pendingDirectory = rows.filter((row) => row.source !== "resource_bank" && row.healthStatus === "pending").length;
   const lastRun = rows
     .map((row) => row.lastCheckedAt)
     .filter((value): value is string => Boolean(value))
@@ -229,38 +160,8 @@ function buildSummary(rows: AdminResourceRow[]) {
     manualReview: review,
     staleOrBroken: stale,
     verified,
-    pendingDirectory,
     lastRun,
   };
-}
-
-async function fetchDirectoryTable(
-  supabase: ReturnType<typeof createSupabaseAdmin>,
-  source: (typeof DIRECTORY_TABLES)[number]["source"],
-  limit: number
-) {
-  const selects = DIRECTORY_SELECTS[source];
-  const full = await supabase
-    .from(source)
-    .select(selects.full)
-    .order("updated_at", { ascending: false })
-    .limit(limit);
-
-  if (!full.error) return full;
-
-  const missingLinkColumns =
-    full.error.message.includes("link_status") ||
-    full.error.message.includes("link_checked_at") ||
-    full.error.message.includes("link_fail_count") ||
-    full.error.message.includes("link_http_status");
-
-  if (!missingLinkColumns) return full;
-
-  return supabase
-    .from(source)
-    .select(selects.fallback)
-    .order("updated_at", { ascending: false })
-    .limit(limit);
 }
 
 export async function GET(req: NextRequest) {
@@ -270,7 +171,7 @@ export async function GET(req: NextRequest) {
   const supabase = createSupabaseAdmin();
   const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 500), 1000);
 
-  const bankPromise = supabase
+  const bank = await supabase
     .from("resource_bank")
     .select(
       "id,name,url,description,authority,status,source_tier,tags,last_verified_at,verification,added_by,created_at,updated_at"
@@ -278,23 +179,11 @@ export async function GET(req: NextRequest) {
     .order("updated_at", { ascending: false })
     .limit(limit);
 
-  const directoryPromises = DIRECTORY_TABLES.map((table) => fetchDirectoryTable(supabase, table.source, limit));
-
-  const [bank, ...directoryResults] = await Promise.all([bankPromise, ...directoryPromises]);
-  const errors = [bank.error, ...directoryResults.map((result) => result.error)].filter(Boolean);
-  if (errors.length > 0) {
-    return NextResponse.json({ error: errors[0]?.message ?? "Could not load resources." }, { status: 500 });
+  if (bank.error) {
+    return NextResponse.json({ error: bank.error.message ?? "Could not load resources." }, { status: 500 });
   }
 
-  const rows: AdminResourceRow[] = [
-    ...((bank.data ?? []) as unknown as RawRow[]).map((row) => normalizeBank(row)),
-    ...directoryResults.flatMap((result, index) => {
-      const table = DIRECTORY_TABLES[index];
-      return ((result.data ?? []) as unknown as RawRow[]).map((row) =>
-        normalizeDirectory(row, table.source, table.kind)
-      );
-    }),
-  ];
+  const rows: AdminResourceRow[] = ((bank.data ?? []) as unknown as RawRow[]).map((row) => normalizeBank(row));
 
   rows.sort((a, b) => {
     const aTime = Date.parse(a.lastCheckedAt ?? a.updatedAt ?? a.createdAt);

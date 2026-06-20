@@ -149,24 +149,6 @@ def _from_agent_response(session_id: str, result: AgentResponse) -> ChatResponse
     )
 
 
-def _merge_resources(*groups, limit: int = 8):
-    seen_urls = set()
-    seen_names = set()
-    merged = []
-    for group in groups:
-        for resource in group:
-            url_key = (resource.url or str(resource.id)).strip().lower()
-            name_key = resource.name.strip().lower()
-            if not url_key or url_key in seen_urls or name_key in seen_names:
-                continue
-            seen_urls.add(url_key)
-            seen_names.add(name_key)
-            merged.append(resource)
-            if len(merged) >= limit:
-                return merged
-    return merged
-
-
 # ---------- Core pipeline ----------
 async def _answer(
     session_id: str,
@@ -208,19 +190,11 @@ async def _answer(
     if not route.needs_resources:
         return ChatResponse(session_id=session_id, answer_text=_friendly_closing())
 
-    # 4. Retrieve from the bank and supplement from the curated public
-    #    directory tables when verification has sidelined most bank rows.
-    bank_resources = await repository.get_active_resources(tags=route.tags or None)
-    directory_resources = []
-    if len(bank_resources) < 4:
-        directory_resources = await repository.get_directory_resources(tags=route.tags or None, school_code=school_key)
-    resources = _merge_resources(directory_resources, bank_resources) if directory_resources else bank_resources
+    # 4. Retrieve only from the canonical AI resource bank. Legacy directory
+    #    rows are imported into this table before they can be served.
+    resources = await repository.get_active_resources(tags=route.tags or None)
     if not resources:
-        bank_resources = await repository.get_active_resources(tags=None)
-        directory_resources = await repository.get_directory_resources(tags=None, school_code=school_key)
-        resources = _merge_resources(directory_resources, bank_resources)
-    if not resources:
-        resources = await repository.get_directory_resources(tags=None, school_code=school_key)
+        resources = await repository.get_active_resources(tags=None)
 
     # 5. Grounded synthesis: answer from these resources only.
     synth = await synthesize(message, resources, _context_note(has_instate, school_key, profile))

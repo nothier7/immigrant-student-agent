@@ -62,7 +62,7 @@ def _to_resource(row: asyncpg.Record) -> Resource:
 
 async def get_active_resources(
     tags: list[str] | None = None,
-    status_in: tuple[str, ...] = ("valid", "unverified", "unverifiable"),
+    status_in: tuple[str, ...] = ("valid",),
     limit: int = 8,
 ) -> list[Resource]:
     """Rows whose status is allowed and whose tags overlap the requested tags.
@@ -80,113 +80,6 @@ async def get_active_resources(
     """
     async with _pool.acquire() as conn:
         rows = await conn.fetch(sql, list(status_in), tags, limit)
-    return [_to_resource(r) for r in rows]
-
-
-async def get_directory_resources(
-    tags: list[str] | None = None,
-    school_code: str | None = "ccny",
-    limit: int = 8,
-) -> list[Resource]:
-    """Fallback serving path for the public directory tables.
-
-    `/admin` and `/resources` manage these rows separately from `resource_bank`.
-    When the AI bank has no valid matches, the chat agent should still be able
-    to answer from active curated scholarships/resources/mentorships.
-    """
-    sql = """
-        with directory as (
-          select
-            id,
-            name,
-            description,
-            url,
-            category,
-            authority,
-            1::smallint as source_tier,
-            array_remove(array_cat(eligibility_tags, array['scholarship', category]), null) as tags,
-            null::date as deadline,
-            null::text as deadline_type,
-            case when coalesce(link_status, 'ok') in ('broken', 'timeout') then 'stale' else 'valid' end as status,
-            link_checked_at as last_verified_at,
-            jsonb_build_object('source', 'scholarships', 'link_status', coalesce(link_status, 'unknown')) as verification,
-            'directory'::text as added_by,
-            created_at,
-            updated_at,
-            schools,
-            0 as source_order
-          from scholarships
-          where status = 'active'
-            and nullif(trim(url), '') is not null
-            and coalesce(link_status, 'ok') not in ('broken', 'timeout')
-
-          union all
-
-          select
-            id,
-            name,
-            description,
-            url,
-            category,
-            authority,
-            2::smallint as source_tier,
-            array_remove(array_cat(eligibility_tags, array[category]), null) as tags,
-            null::date as deadline,
-            null::text as deadline_type,
-            case when coalesce(link_status, 'ok') in ('broken', 'timeout') then 'stale' else 'valid' end as status,
-            link_checked_at as last_verified_at,
-            jsonb_build_object('source', 'resources', 'link_status', coalesce(link_status, 'unknown')) as verification,
-            'directory'::text as added_by,
-            created_at,
-            updated_at,
-            schools,
-            1 as source_order
-          from resources
-          where status = 'active'
-            and nullif(trim(url), '') is not null
-            and coalesce(link_status, 'ok') not in ('broken', 'timeout')
-
-          union all
-
-          select
-            id,
-            name,
-            description,
-            url,
-            category,
-            authority,
-            2::smallint as source_tier,
-            array_remove(array[category, 'general'], null) as tags,
-            null::date as deadline,
-            null::text as deadline_type,
-            case when coalesce(link_status, 'ok') in ('broken', 'timeout') then 'stale' else 'valid' end as status,
-            link_checked_at as last_verified_at,
-            jsonb_build_object('source', 'mentorships', 'link_status', coalesce(link_status, 'unknown')) as verification,
-            'directory'::text as added_by,
-            created_at,
-            updated_at,
-            schools,
-            2 as source_order
-          from mentorships
-          where status = 'active'
-            and nullif(trim(url), '') is not null
-            and coalesce(link_status, 'ok') not in ('broken', 'timeout')
-        )
-        select id, name, description, url, category, authority, source_tier,
-               tags, deadline, deadline_type, status, last_verified_at,
-               verification, added_by, created_at, updated_at
-        from directory
-        where ($1::text[] is null or tags && $1)
-          and (
-            $2::text is null
-            or coalesce(array_length(schools, 1), 0) = 0
-            or $2 = any(schools)
-          )
-        order by source_order asc, source_tier asc, updated_at desc
-        limit $3
-    """
-    async with _pool.acquire() as conn:
-        rows = await conn.fetch(sql, tags, school_code, limit)
     return [_to_resource(r) for r in rows]
 
 
@@ -225,6 +118,7 @@ async def resources_due_for_verification(
     sql = f"""
         select {_COLUMNS} from resource_bank
         where status != 'pending_review'
+          and coalesce(verification->>'reason', '') != 'Imported from archived directory row.'
           and (
                 status = 'unverified'
                 or last_verified_at is null
